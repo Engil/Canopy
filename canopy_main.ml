@@ -30,7 +30,8 @@ module Main  (C: CONSOLE) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (S:Cohtt
     let respond_html ~status ~content ~title =
       Store.get_subkeys [] >>= fun keys ->
       let body = Canopy_templates.main ~config ~content ~title ~keys in
-      S.respond_string ~status ~body () in
+      let headers = Cohttp.Header.init_with "Content-Type" "text/html; charset=UTF-8" in
+      S.respond_string ~status ~headers ~body () in
 
     let respond_update = function
       | [] -> S.respond_string ~status:`OK ~body:"" ()
@@ -77,7 +78,8 @@ module Main  (C: CONSOLE) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (S:Cohtt
           | None ->
             S.respond_string ~status:`Not_found ~body:"Not found" ()
           | Some body ->
-            S.respond_string ~status:`OK ~body ()
+            let headers = Cohttp.Header.init_with "Content-Type" (Magic_mime.lookup uri) in
+            S.respond_string ~status:`OK  ~headers ~body ()
         end
 
       | "atom" :: [] ->
