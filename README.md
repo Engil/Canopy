@@ -4,11 +4,30 @@ Canopy is an attempt at writting a blog-engine based on Git using [MirageOS][mir
 
 The goal is to provide a simple blog platform that only requires you to provide a Git remote URL and respecting some architecture rules within the said repository.
 
-Canopy is written in OCaml using MirageOS and [Irmin][irmin], but it is currently only available on the Unix platform.
+Canopy is written in OCaml using MirageOS and [Irmin][irmin].  It is running on both Unix and Xen.
 
  [decompress]: <https://github.com/oklm-wsh/Decompress>
  [mirage]: <http://mirage.io/>
  [irmin]: <https://github.com/mirage/irmin>
+
+### HTTPS/TLS support
+
+Canopy has TLS support, you have to first create your TLS private key and get a
+signed certificate (using [certify](https://github.com/yomimono/ocaml-certify)
+and/or [let's encrypt](https://letsencrypt.org/) - sorry, no let's encrypt
+client in OCaml yet).
+
+Put your unencrypted private key into `tls/server.key`, and your full
+certificate chain (starting with the server certificate, then the intermediate
+CAs, no need to include the root CA) into `tls/server.pem` before running
+`mirage configure` (which will embed them as OCaml code into the binary).
+
+You can configure Canopy with `--tls=<port>` (or `-t <port>`) to run it as HTTPS
+service.  Canopy will then respond to HTTP requests with a [moved
+permanently](https://tools.ietf.org/html/rfc2616#section-10.3.2) redirection to
+the HTTPS URL.  Also, the HTTPS service includes a [strict transport
+security](https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security) HTTP
+header (containing `max-age=31536000; includeSubDomains`).
 
 ### Compiling and running Canopy
 
@@ -43,20 +62,20 @@ installed from specific branches.
 ```sh
 opam pin add dolog 'https://github.com/UnixJunkie/dolog.git#no_unix'
 opam pin add bin_prot 'https://github.com/hannesm/bin_prot.git#113.33.00+xen'
-opam pin add crc 'https://github.com/yomimono/ocaml-crc.git#xen_linkopts'
+opam pin add crc 'https://github.com/xapi-project/ocaml-crc.git'
 ```
 
-You can either build with support for DHCP or static ip, just specifying it in an
-environment variable, for instance:
+You can either build with support for DHCP or static ip, just specifying it as
+command line arguments, for instance:
 
 ```sh
-DHCP='no' mirage configure --xen
+mirage configure --xen --dhcp false --net direct --ip 10.0.0.2 --netmask 255.255.255.0 --gateways 10.0.0.1
 make
 ```
 
 Make sure to have `br0` set up for this. For example, I did:
 
-```
+```sh
 # provide ip forwarding
 echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 sysctl -p /etc/sysctl.conf

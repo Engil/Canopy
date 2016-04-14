@@ -26,8 +26,11 @@ let of_string meta uri created updated content =
 
 let to_tyxml article =
   let author = "Written by " ^ article.author in
-  let date = ptime_to_pretty_date article.updated in
-  let updated = "Last updated: " ^ date in
+  let created = ptime_to_pretty_date article.created in
+  let updated = ptime_to_pretty_date article.updated in
+  let updated = String.concat " "
+      [ "Published:" ; created ; "(last updated:" ; updated ^ ")" ]
+  in
   let tags = Canopy_templates.taglist article.tags in
   [div ~a:[a_class ["post"]] [
 	 h2 [pcdata article.title];
@@ -75,6 +78,7 @@ let to_atom ({ title; author; abstract; uri; created; updated; tags; content; } 
     ~content:(Syndic.Atom.Html (None, content))
     ~authors:(Syndic.Atom.author author, [])
     ~title:(text title)
+    ~published:created
     ~updated
     ?summary
     ~categories

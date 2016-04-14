@@ -5,12 +5,15 @@ let disk =
   let fat_ro dir = generic_kv_ro ~key:fs_key dir in
   fat_ro "./disk"
 
-
 (* Command-line options *)
 
 let index_k =
   let doc = Key.Arg.info ~doc:"Index file name in remote." ["i"; "index"] in
   Key.(create "index" Arg.(opt string "Index" doc))
+
+let tls_port_k =
+  let doc = Key.Arg.info ~doc:"Enable TLS (using keys in `tls/`) on given port." ["t"; "tls"] in
+  Key.(create "tls_port" Arg.(opt (some int) None doc))
 
 let name_k =
   let doc = Key.Arg.info ~doc:"Blog name." ["n"; "name"] in
@@ -72,28 +75,30 @@ let stack =
   | `Xen -> generic_stackv4 default_console tap0
   | `Unix | `MacOSX -> socket_stackv4 default_console [Ipaddr.V4.any]
 
-let conduit_d = conduit_direct ~tls:true stack
-let http_srv = http_server conduit_d
-let res_dns = resolver_dns stack
-
-
-let main =
-  let keys = Key.([
-                     abstract index_k;
-                     abstract name_k;
-                     abstract port_k;
-                     abstract push_hook_k;
-                     abstract remote_k;
-                     abstract mathjax_k
-                   ]) in
-  foreign
-    ~libraries
-    ~deps:[abstract nocrypto]
-    ~keys
-    ~packages
-    "Canopy_main.Main" (console @-> resolver @-> conduit @-> http @-> kv_ro @-> job)
-
 let () =
+  let keys = Key.([
+      abstract index_k;
+      abstract name_k;
+      abstract port_k;
+      abstract push_hook_k;
+      abstract remote_k;
+      abstract mathjax_k;
+      abstract tls_port_k;
+    ])
+  in
   register "canopy" [
-    main $ default_console $ res_dns $ conduit_d $ http_srv $ disk
+    foreign
+      ~libraries
+      ~deps:[abstract nocrypto]
+      ~keys
+      ~packages
+      "Canopy_main.Main"
+      (console @-> stackv4 @-> resolver @-> conduit @-> kv_ro @-> clock @-> kv_ro @-> job)
+    $ default_console
+    $ stack
+    $ resolver_dns stack
+    $ conduit_direct ~tls:true stack
+    $ disk
+    $ default_clock
+    $ crunch "tls"
   ]

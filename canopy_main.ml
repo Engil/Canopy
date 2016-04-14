@@ -1,140 +1,99 @@
 open Lwt
 open V1_LWT
 
-module Main  (C: CONSOLE) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (S:Cohttp_lwt.Server) (Disk: KV_RO)  = struct
+module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (DISK: KV_RO) (CLOCK: V1.CLOCK) (KEYS: KV_RO) = struct
 
-  let read_fs fs path =
-    Disk.size fs path
-    >>= function
-    | `Error (Disk.Unknown_key _) -> Lwt.return_none
-    | `Ok size ->
-      Disk.read fs path 0 (Int64.to_int size)
-      >>= function
-      | `Error (Disk.Unknown_key _) -> Lwt.return_none
-      | `Ok bufs -> Lwt.return_some (Cstruct.copyv bufs)
+  module TCP  = S.TCPV4
+  module TLS  = Tls_mirage.Make (TCP)
+  module X509 = Tls_mirage.X509 (KEYS) (CLOCK)
 
-  let start console res ctx http disk _ =
+  module HTTP  = Cohttp_mirage.Server(TCP)
+  module HTTPS = Cohttp_mirage.Server(TLS)
 
-    let open Canopy_config in
-    let open Canopy_utils in
-    let config = Canopy_config.config () in
+  module D  = Canopy_dispatch.Make(HTTP)(C)(DISK)
+  module DS = Canopy_dispatch.Make(HTTPS)(C)(DISK)
+
+  let log c fmt = Printf.ksprintf (C.log c) fmt
+
+  let with_tls c cfg tcp f =
+    let peer, port = TCP.get_dest tcp in
+    let log str = log c "[%s:%d] %s" (Ipaddr.V4.to_string peer) port str in
+    let with_tls_server k = TLS.server_of_flow cfg tcp >>= k in
+    with_tls_server @@ function
+    | `Error _ -> log "TLS failed"; TCP.close tcp
+    | `Ok tls  -> log "TLS ok"; f tls >>= fun () ->TLS.close tls
+    | `Eof     -> log "TLS eof"; TCP.close tcp
+
+  let tls_init kv =
+    X509.certificate kv `Default >|= fun cert ->
+    Tls.Config.server ~certificates:(`Single cert) ()
+
+  let start console stack resolver conduit disk _clock keys _ =
     let module Context =
       ( struct
-        let v _ = Lwt.return_some (res, ctx)
+        let v _ = Lwt.return_some (resolver, conduit)
       end : Irmin_mirage.CONTEXT)
     in
     let module Store = Canopy_store.Store(C)(Context)(Inflator) in
-
-    let content_hashtbl = KeyHashtbl.create 32 in
-
-    let respond_html ~status ~content ~title =
-      Store.get_subkeys [] >>= fun keys ->
-      let body = Canopy_templates.main ~config ~content ~title ~keys in
-      let headers = Cohttp.Header.init_with "Content-Type" "text/html; charset=UTF-8" in
-      S.respond_string ~status ~headers ~body () in
-
-    let respond_update = function
-      | [] -> S.respond_string ~status:`OK ~body:"" ()
-      | errors ->
-	 let body = List.fold_left (fun a b -> a ^ "\n" ^ b) "" errors in
-	 S.respond_string ~status:`Bad_request ~body () in
-
-    let update_atom, get_atom =
-      let cache = ref None in
-      let update_atom () =
-        let l = KeyHashtbl.fold (fun key x acc -> x :: acc) content_hashtbl []
-                |> List.sort Canopy_content.compare
-                |> Canopy_utils.resize 10 in
-        let entries = List.map Canopy_content.to_atom l in
-        let ns_prefix _ = Some "" in
-        Store.last_commit_date ()
-        >|= fun updated ->
-          Syndic.Atom.feed
-            ~id:(Uri.of_string config.blog_name)
-            ~title:(Syndic.Atom.Text config.blog_name : Syndic.Atom.text_construct)
-            ~updated
-            ~links:[Syndic.Atom.link ~rel:Syndic.Atom.Self (Uri.of_string "/atom")]
-            entries
-        |> fun feed -> Syndic.Atom.to_xml feed |> fun x -> Syndic.XML.to_string ~ns_prefix x
-        |> fun body -> cache := Some body; body
-      in
-      (fun () -> ignore (update_atom ()); Lwt.return ()),
-      (fun () -> match !cache with
-        | Some body -> Lwt.return body
-        | None -> update_atom ())
+    let open Canopy_utils in
+    let cache = KeyHashtbl.create 32 in
+    let open Canopy_config in
+    let config = config () in
+    let update_atom, atom =
+      Canopy_syndic.atom config Store.last_commit_date cache
     in
-
-    Store.pull console >>= fun _ ->
-    Store.fill_cache content_hashtbl >>= fun l ->
-    update_atom () >>= fun () ->
+    let store_ops = {
+      Canopy_dispatch.subkeys = Store.get_subkeys ;
+      value = Store.get_key ;
+      update =
+        (fun () ->
+          KeyHashtbl.clear cache ;
+	  Store.pull console >>= fun () ->
+          Store.fill_cache cache >>= fun res ->
+          update_atom () >|= fun () ->
+          res)
+    } in
+    store_ops.Canopy_dispatch.update () >>= fun l ->
     Lwt_list.iter_p (C.log_s console) l >>= fun () ->
-
-    let rec dispatcher uri =
-      let s_uri = Re_str.split (Re_str.regexp "/") (Uri.pct_decode uri) in
-      match s_uri with
-      | "static"::_ ->
-        begin
-          read_fs disk uri >>= function
-          | None ->
-            S.respond_string ~status:`Not_found ~body:"Not found" ()
-          | Some body ->
-            let headers = Cohttp.Header.init_with "Content-Type" (Magic_mime.lookup uri) in
-            S.respond_string ~status:`OK  ~headers ~body ()
-        end
-
-      | "atom" :: [] ->
-        get_atom () >>= fun body ->
-        let headers = Cohttp.Header.init_with "Content-Type" "application/atom+xml; charset=UTF-8" in
-        S.respond_string ~status:`OK ~headers ~body ()
-      | [] ->
-        dispatcher config.index_page
-
-      | uri::[] when uri = config.push_hook_path ->
-	 Store.pull console >>= fun _ ->
-	 KeyHashtbl.clear content_hashtbl |> Lwt.return >>= fun _ ->
-	 Store.fill_cache content_hashtbl >>= fun l ->
-   update_atom () >>= fun () ->
-	 respond_update l
-
-      | "tags"::tagname::_ ->
-	 let aux _ v l =
-	   if Canopy_content.find_tag tagname v then (v::l) else l in
-      	 let content =
-	   KeyHashtbl.fold aux content_hashtbl []
-	   |> List.sort Canopy_content.compare
-	   |> List.map Canopy_content.to_tyxml_listing_entry
-	   |> Canopy_templates.listing in
-	 respond_html ~status:`OK ~title:config.blog_name ~content
-
-      | key ->
-        begin
-          match KeyHashtbl.find_opt content_hashtbl key with
-            | None ->
-              Store.get_subkeys key >>= fun keys ->
-              if (List.length keys) = 0 then
-                S.respond_string ~status:`Not_found ~body:"Not found" ()
-              else
-                let articles = List.map (KeyHashtbl.find_opt content_hashtbl) keys in
-                let content =
-		  list_reduce_opt articles
-		  |> List.sort Canopy_content.compare
-		  |> List.map Canopy_content.to_tyxml_listing_entry
-		  |> Canopy_templates.listing in
-                respond_html ~status:`OK ~title:config.blog_name ~content
-            | Some article ->
-              let title, content = Canopy_content.to_tyxml article in
-              respond_html ~status:`OK ~title ~content
-        end
-
+    let disp hdr =
+      `Dispatch (config, hdr, disk, store_ops, atom, cache)
     in
-    let callback _ request _ =
-      let uri = Cohttp.Request.uri request in
-      dispatcher (Uri.path uri)
-    in
-    let conn_closed (_,conn_id) =
-      let cid = Cohttp.Connection.to_string conn_id in
-      C.log console (Printf.sprintf "conn %s closed" cid)
-    in
-    http (`TCP config.port) (S.make ~conn_closed ~callback ())
-
+    (match config.tls_port with
+     | Some tls_port ->
+       let redir uri =
+         let https = Uri.with_scheme uri (Some "https") in
+         let port = match tls_port, Uri.port uri with
+           | 443, None -> None
+           | _ -> Some tls_port
+         in
+         Uri.with_port https port
+       in
+       let http = HTTP.listen (D.create console (`Redirect redir)) in
+       S.listen_tcpv4 stack ~port:config.port http ;
+       C.log_s console
+         (let redirect =
+            let req = Uri.of_string "http://127.0.0.1" in
+            (* TODO: use own hostname instead of 127.0.0.1 once we have that *)
+            Uri.to_string (redir req)
+          in
+          Printf.sprintf "HTTP server listening on port %d (redirecting to %s)"
+            config.port redirect
+         ) >>= fun () ->
+       tls_init keys >>= fun tls_conf ->
+       let hdr = Cohttp.Header.init_with
+           "Strict-Transport-Security" "max-age=31536000; includeSubDomains"
+       in
+       let callback = HTTPS.listen (DS.create console (disp hdr)) in
+       let https flow = with_tls console tls_conf flow callback in
+       S.listen_tcpv4 stack ~port:tls_port https ;
+       C.log_s console
+         (Printf.sprintf "HTTPS server listening on port %d" tls_port)
+     | None ->
+       let hdr = Cohttp.Header.init () in
+       let http = HTTP.listen (D.create console (disp hdr)) in
+       S.listen_tcpv4 stack ~port:config.port http ;
+       C.log_s console
+         (Printf.sprintf "HTTP server listening on port %d" config.port)
+    ) >>= fun () ->
+    S.listen stack
 end

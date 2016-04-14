@@ -5,6 +5,7 @@ type t = {
   port : int;
   push_hook_path: string;
   mathjax: bool;
+  tls_port : int option;
 }
 
 let config () = {
@@ -14,4 +15,5 @@ let config () = {
   port = Key_gen.port ();
   push_hook_path = Key_gen.push_hook ();
   mathjax = Key_gen.mathjax ();
+  tls_port = Key_gen.tls_port ();
 }
