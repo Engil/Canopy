@@ -61,6 +61,7 @@ let packages = [
     "re";
     "cohttp";
     "syndic";
+    "magic-mime";
   ]
 
 
