@@ -68,31 +68,48 @@ module Store (C: CONSOLE) (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = st
 		| pred::[] ->
 		   let to_visit = if ((List.mem pred visited) = false) then pred::to_visit else to_visit in
 		   to_visit
-		| q -> print_endline "weird"; List.append (List.rev q) to_visit)
+		| q -> List.append (List.rev q) to_visit)
 	    in aux commit visited to_visit
 	 | None -> Lwt.return last_commit in
     aux commit [] [commit]
 
-  let last_updated_commit_id commit key =
-    repo () >>= fun repo ->
-    new_task () >>= fun t  ->
-    Store.read_exn (t "Reading file") key >>= fun current_file ->
-    let aux commit_id acc =
-      acc >>= fun (acc, matched) ->
-      Store.of_commit_id (Irmin.Task.none) commit_id repo >>= fun store ->
-      Store.read (store ()) key >>= fun readed_file ->
-      match readed_file with
-      | Some readed_file ->
-        let matching = current_file = readed_file in
-        let res =
-          if current_file = readed_file
-          then if matched then acc else commit_id
-          else commit_id in
-        Lwt.return (res, matching)
-      | None -> Lwt.return (commit_id, true) in
-    Store.history (t "Reading history") >>= fun history ->
-    Topological.fold aux history (Lwt.return (commit, false))
-    >>= fun (c, _) -> Lwt.return c
+let last_updated_commit_id head key =
+  repo () >>= fun repo ->
+  new_task () >>= fun t  ->
+  Store.read_exn (t "Reading file") key >>= fun current_file ->
+  Store.history (t "Reading history") >>= fun history ->
+  let rec aux ucommit visited to_visit =
+    match to_visit with
+    | [] -> Lwt.return ucommit
+    | commit::to_visit ->
+       Store.of_commit_id (Irmin.Task.none) commit repo >>= fun store ->
+       Store.read (store ()) key >>= fun readed_file ->
+       let visited = commit::visited in
+       (match readed_file with
+	 | Some readed_file ->
+	    let matched = (String.compare readed_file current_file) = 0 in
+	    let to_visit =
+	      if matched then
+		(
+		  match Store.History.pred history commit with
+		  | [] -> to_visit
+		  | pred::pred2::[] ->
+		     let to_visit = if ((List.mem pred visited) = false) then pred::to_visit else to_visit in
+		     let to_visit = if ((List.mem pred2 visited) = false) then pred2::to_visit else to_visit in
+		     to_visit
+		  | pred::[] ->
+		     let to_visit = if ((List.mem pred visited) = false) then pred::to_visit else to_visit in
+		     to_visit
+		  | q -> List.append (List.rev q) to_visit
+		) else to_visit
+	    in
+	    if matched then
+	      aux commit visited to_visit
+	    else
+	      aux ucommit visited []
+	 | None -> aux ucommit visited to_visit)
+  in
+  aux head [] [head]
 
   let date_updated_created key =
     new_task () >>= fun t  ->
