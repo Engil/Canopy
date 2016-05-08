@@ -45,40 +45,51 @@ module Store (C: CONSOLE) (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = st
          let msg = Printf.sprintf "Fail pull %s" (Printexc.to_string e) in
          Lwt.return (C.log console msg))
 
-  let created_updated_ids commit key =
-    repo () >>= fun repo ->
+  let commit_date repo commit_id =
+    Store.Repo.task_of_commit_id repo commit_id >|= fun task ->
+    Irmin.Task.date task |> Int64.to_float |> Ptime.of_float_s
+
+  let commits repo key =
     Store.master task repo >>= fun t  ->
     Store.history (t "Reading history") >>= fun history ->
-    let aux commit_id acc =
-      Store.of_commit_id (Irmin.Task.none) commit_id repo >>= fun store ->
-      acc >>= fun (created, updated, last) ->
-      Store.read (store ()) key >|= fun data ->
-      match data, last with
-      | None, None -> (created, updated, last)
-      | None, Some _ -> (created, updated, last)
-      | Some x, Some y when x = y -> (created, updated, last)
-      | Some _, None -> (commit_id, commit_id, data)
-      | Some _, Some _ -> (created, commit_id, data)
-    in
-    Topological.fold aux history (Lwt.return (commit, commit, None))
+    Topological.fold
+      (fun id acc ->
+         Store.of_commit_id (Irmin.Task.none) id repo >>= fun store ->
+         acc >>= fun acc ->
+         Store.read (store ()) key >>= function
+         | None -> Lwt.return acc
+         | Some x -> commit_date repo id >|= function
+           | None -> acc
+           | Some d -> (d, x) :: acc)
+      history (Lwt.return [])
 
-  let date_updated_created key =
+  let find_last_ts c = function
+    | [] -> c
+    | ((_, newest)::_) as xs ->
+      List.fold_left (fun ts (n, data) -> if newest = data then n else ts) c xs
+
+  let date_updated_created head repo key =
+    commits repo key >|= fun commits ->
+    match List.sort (fun (t1, _) (t2, _) -> compare t1 t2) commits with
+    | ((f, _)::_) as xs -> (f, find_last_ts f (List.rev xs))
+    | [] -> (head, head)
+
+  let last_commit_date () =
     new_task () >>= fun t  ->
     repo () >>= fun repo ->
     Store.head_exn (t "Finding head") >>= fun head ->
-    created_updated_ids head key >>= fun (created_commit_id, updated_commit_id, _) ->
-    let to_ptime task = Irmin.Task.date task |> Int64.to_float |> Ptime.of_float_s in
-    Store.Repo.task_of_commit_id repo updated_commit_id >>= fun updated ->
-    Store.Repo.task_of_commit_id repo created_commit_id >>= fun created ->
-    match to_ptime updated, to_ptime created with
-    | Some a, Some b -> Lwt.return (a, b)
-    | _ -> raise (Invalid_argument "date_updated_last")
+    commit_date repo head >>= function
+      | None -> assert false
+      | Some x -> Lwt.return x
 
   let fill_cache article_map =
     let open Canopy_content in
+    last_commit_date () >>= fun head_date ->
+    repo () >>= fun repo ->
     let fold_fn key value acc =
-      value () >>= fun content ->
-      date_updated_created key >>= fun (updated, created) ->
+      value >>= fun content ->
+      date_updated_created head_date repo key >>= fun (created, updated) ->
+      Printf.printf "article %s created %s updated %s\n%!" (String.concat "/" key) (Ptime.to_rfc3339 created) (Ptime.to_rfc3339 updated) ;
       let uri = String.concat "/" key in
       match of_string ~uri ~content ~created ~updated with
       | Ok article ->
@@ -94,13 +105,4 @@ module Store (C: CONSOLE) (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = st
     new_task () >>= fun t ->
     fold (t "Folding through values") fold_fn []
 
-  let last_commit_date () =
-    new_task () >>= fun t  ->
-    repo () >>= fun repo ->
-    Store.head_exn (t "Finding head") >>= fun head ->
-    Store.Repo.task_of_commit_id repo head >>= fun task ->
-    let date = Irmin.Task.date task |> Int64.to_float in
-    Ptime.of_float_s date |> function
-      | Some o -> Lwt.return o
-      | None -> raise (Invalid_argument "date_updated_last")
 end
