@@ -4,9 +4,9 @@ type content_t =
   | Markdown of Canopy_article.t
 
 type error_t =
-    Unknown
-  | Error of string
-  | Ok of content_t
+    CUnknown
+  | CError of string
+  | COk of content_t
 
 let meta_assoc str =
   Re_str.split (Re_str.regexp "\n") str |>
@@ -19,6 +19,10 @@ let meta_assoc str =
 
 let of_string ~uri ~created ~updated ~content =
   let splitted_content = Re_str.bounded_split (Re_str.regexp "---") content 2 in
+  let article_of_meta meta uri created updated content = 
+    Canopy_article.of_string meta uri created updated content
+    |> map_opt (fun article -> COk (Markdown article)) (CError "Error while parsing article")
+  in
   match splitted_content with
   | [raw_meta;raw_content] ->
     begin
@@ -27,14 +31,12 @@ let of_string ~uri ~created ~updated ~content =
         begin
           match assoc_opt "content" meta with
           | Some "markdown"
-          | None ->
-            Canopy_article.of_string meta uri created updated raw_content
-            |> map_opt (fun article -> Ok (Markdown article)) (Error "Error while parsing article")
-          | Some _ -> Unknown
+          | None -> article_of_meta meta uri created updated raw_content
+          | Some _ -> CUnknown
         end
-      | exception _ -> Unknown
+      | exception _ -> CUnknown
     end
-  | _ -> Error "No header found"
+  | _ -> article_of_meta [] uri created updated content
 
 let to_tyxml = function
   | Markdown m ->
