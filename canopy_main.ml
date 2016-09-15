@@ -1,7 +1,7 @@
 open Lwt
 open V1_LWT
 
-module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (DISK: KV_RO) (CLOCK: V1.CLOCK) (KEYS: KV_RO) = struct
+module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (DISK: KV_RO) (CLOCK: V1.PCLOCK) (KEYS: KV_RO) = struct
 
   module TCP  = S.TCPV4
   module TLS  = Tls_mirage.Make (TCP)
@@ -16,7 +16,7 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
   let log c fmt = Printf.ksprintf (C.log c) fmt
 
   let with_tls c cfg tcp f =
-    let peer, port = TCP.get_dest tcp in
+    let peer, port = TCP.dst tcp in
     let log str = log c "[%s:%d] %s" (Ipaddr.V4.to_string peer) port str in
     let with_tls_server k = TLS.server_of_flow cfg tcp >>= k in
     with_tls_server @@ function
@@ -28,11 +28,8 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
     X509.certificate kv `Default >|= fun cert ->
     Tls.Config.server ~certificates:(`Single cert) ()
 
-  let start console stack resolver conduit disk _clock keys _ _ =
-    let started = match Ptime.of_float_s (CLOCK.time ()) with
-      | None -> invalid_arg ("Ptime.of_float_s")
-      | Some t -> t
-    in
+  let start console stack resolver conduit disk clock keys _ _ =
+    let started = Ptime.v (CLOCK.now_d_ps clock) in
     let module Context =
       ( struct
         let v _ = Lwt.return_some (resolver, conduit)
