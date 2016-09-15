@@ -123,9 +123,9 @@ let packages = [
 (* Network stack *)
 
 let stack =
-  match get_mode () with
-  | `Xen -> generic_stackv4 default_console tap0
-  | `Unix | `MacOSX -> socket_stackv4 default_console [Ipaddr.V4.any]
+  if_impl Key.is_xen
+    (generic_stackv4 tap0)
+    (socket_stackv4 [Ipaddr.V4.any])
 
 let () =
   let keys = Key.([
@@ -147,12 +147,12 @@ let () =
       ~keys
       ~packages
       "Canopy_main.Main"
-      (console @-> stackv4 @-> resolver @-> conduit @-> kv_ro @-> clock @-> kv_ro @-> job)
+      (console @-> stackv4 @-> resolver @-> conduit @-> kv_ro @-> pclock @-> kv_ro @-> job)
     $ default_console
     $ stack
     $ resolver_dns stack
     $ conduit_direct ~tls:true stack
     $ disk
-    $ default_clock
+    $ default_posix_clock
     $ crunch "tls"
   ]
