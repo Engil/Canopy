@@ -16,8 +16,8 @@ let of_string meta uri created updated content =
   try
     let split_tags = Re_str.split (Re_str.regexp ",") in
     let content = Omd.of_string content |> fun s -> Omd.to_html s in
-    let author = List.assoc "author" meta in
-    let title = List.assoc "title" meta in
+    let author = assoc_opt "author" meta |> default_opt "Anonymous" in
+    let title = assoc_opt "title" meta |> default_opt "Unknown Title" in
     let tags = assoc_opt "tags" meta |> map_opt split_tags [] |> List.map String.trim in
     let abstract = assoc_opt "abstract" meta in
     Some {title; content; author; uri; abstract; created; updated; tags}
