@@ -123,9 +123,9 @@ let packages = [
 (* Network stack *)
 
 let stack =
-  if_impl Key.is_xen
-    (generic_stackv4 tap0)
+  if_impl Key.is_unix
     (socket_stackv4 [Ipaddr.V4.any])
+    (generic_stackv4 tap0)
 
 let () =
   let keys = Key.([
