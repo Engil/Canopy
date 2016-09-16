@@ -1,4 +1,5 @@
 open Canopy_utils
+open Astring
 
 type content_t =
   | Markdown of Canopy_article.t
@@ -9,13 +10,11 @@ type error_t =
   | COk of content_t
 
 let meta_assoc str =
-  Re_str.split (Re_str.regexp "\n") str |>
+  String.cuts ~sep:"\n" str |>
   List.map (fun meta ->
-      let reg = Re_str.regexp "\\(.*\\): \\(.*\\)" in
-      let _ = Re_str.string_match reg meta 0 in
-      let key = Re_str.matched_group 1 meta in
-      let value = Re_str.matched_group 2 meta in
-      key, value)
+    match String.cut ~sep:":" meta with
+    | None -> "", meta
+    | Some (k,v) -> k, (String.trim v))
 
 let of_string ~uri ~created ~updated ~content =
   let splitted_content = Re_str.bounded_split (Re_str.regexp "---") content 2 in
