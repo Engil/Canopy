@@ -13,6 +13,7 @@ WORKDIR /src
 ADD tls /src/tls
 RUN sudo chown -R opam:opam /src; sudo chmod -R 700 /src
 ENV TMP /tmp
+RUN opam pin add git git://github.com/avsm/ocaml-git#dirty-warning
 RUN opam install -y -j2 mirage
 RUN opam config exec -- mirage configure --no-assets-compilation
 COPY . /src
