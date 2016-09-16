@@ -1,5 +1,6 @@
 open Canopy_utils
 open Tyxml.Html
+open Astring
 
 type t = {
   title : string;
@@ -18,7 +19,7 @@ let of_string meta uri created updated content =
     let content = Omd.of_string content |> fun s -> Omd.to_html s in
     let author = assoc_opt "author" meta |> default_opt "Anonymous" in
     let title = assoc_opt "title" meta |> default_opt "Unknown Title" in
-    let tags = assoc_opt "tags" meta |> map_opt split_tags [] |> List.map String.trim in
+    let tags = assoc_opt "tags" meta |> map_opt split_tags [] |> List.map (fun x -> String.trim x) in
     let abstract = assoc_opt "abstract" meta in
     Some {title; content; author; uri; abstract; created; updated; tags}
   with
@@ -28,7 +29,7 @@ let to_tyxml article =
   let author = "Written by " ^ article.author in
   let created = ptime_to_pretty_date article.created in
   let updated = ptime_to_pretty_date article.updated in
-  let updated = String.concat " "
+  let updated = String.concat ~sep:" "
       [ "Published:" ; created ; "(last updated:" ; updated ^ ")" ]
   in
   let tags = Canopy_templates.taglist article.tags in
