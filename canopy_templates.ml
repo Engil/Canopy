@@ -41,7 +41,7 @@ let main ~config ~content ~title ~keys =
       )
       (body
          [
-           nav ~a:[a_class ["navbar navbar-default navbar-fixed-top"]] [
+           nav ~a:[a_class ["navbar navbar-default"]] [
              div ~a:[a_class ["container"]] [
                div ~a:[a_class ["navbar-header"]] [
                  button ~a:[a_class ["navbar-toggle collapsed"];
