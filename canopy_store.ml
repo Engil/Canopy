@@ -81,13 +81,13 @@ module Store (C: CONSOLE) (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = st
       date_updated_created key >>= fun (updated, created) ->
       let uri = String.concat "/" key in
       match of_string ~uri ~content ~created ~updated with
-      | Ok article ->
+      | COk article ->
         article_map := KeyMap.add key article !article_map;
         Lwt.return acc
-      | Error error ->
+      | CError error ->
         let error_msg = Printf.sprintf "Error while parsing %s: %s" uri error in
         Lwt.return (error_msg::acc)
-      | Unknown ->
+      | CUnknown ->
         let error_msg = Printf.sprintf "%s : Unknown content type" uri in
         Lwt.return (error_msg::acc)
     in
