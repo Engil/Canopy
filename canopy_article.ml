@@ -10,9 +10,10 @@ type t = {
   created: Ptime.t;
   updated: Ptime.t;
   tags: string list;
+  uuid: string;
 }
 
-let of_string meta uri created updated content =
+let of_string base_uuid meta uri created updated content =
   try
     let split_tags = Re_str.split (Re_str.regexp ",") in
     let content = Omd.to_html (Omd.of_string content) in
@@ -20,7 +21,13 @@ let of_string meta uri created updated content =
     let title = List.assoc "title" meta in
     let tags = assoc_opt "tags" meta |> map_opt split_tags [] |> List.map String.trim in
     let abstract = assoc_opt "abstract" meta in
-    Some {title; content; author; uri; abstract; created; updated; tags}
+    let uuid =
+      let open Uuidm in
+      let stamp = Ptime.to_rfc3339 created in
+      let entry_id = to_string (v5 (create (`V5 (ns_dns, stamp))) base_uuid) in
+      Printf.sprintf "urn:uuid:%s" entry_id
+    in
+    Some {title; content; author; uri; abstract; created; updated; tags; uuid}
   with
   | _ -> None
 
@@ -71,29 +78,21 @@ let to_tyxml_tags tags =
       h2 [pcdata "Tags"];
       div ~a:[a_class ["list-group listing"]] [html]]]
 
-let to_atom ({ title; author; abstract; uri; created; updated; tags; content; } as article) =
+let to_atom cache ({ title; author; abstract; uri; created; updated; tags; content; uuid}) =
   let text x : Syndic.Atom.text_construct = Syndic.Atom.Text x in
   let summary = match abstract with
     | Some x -> Some (text x)
     | None -> None
   in
-  let root = Canopy_config.((config ()).root) 
+  let root = Canopy_config.root cache
   in
   let categories =
     List.map
       (fun x -> Syndic.Atom.category ~scheme:(Uri.of_string (root ^ "/tags/" ^ x)) x)
       tags
   in
-  let generate_id { created; _ } =
-    let open Uuidm in
-    let stamp = Ptime.to_rfc3339 created in
-    let uuid = Canopy_config.((config ()).uuid) in
-    let entry_id = to_string (v5 (create (`V5 (ns_dns, stamp))) uuid) in
-    Printf.sprintf "urn:uuid:%s" entry_id
-    |> Uri.of_string
-  in
   Syndic.Atom.entry
-    ~id:(generate_id article)
+    ~id:(Uri.of_string uuid)
     ~content:(Syndic.Atom.Html (None, content))
     ~authors:(Syndic.Atom.author author, [])
     ~title:(text title)

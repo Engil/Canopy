@@ -1,7 +1,7 @@
 open Lwt
 open V1_LWT
 
-module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (DISK: KV_RO) (CLOCK: V1.CLOCK) (KEYS: KV_RO) = struct
+module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: V1.CLOCK) (KEYS: KV_RO) = struct
 
   module TCP  = S.TCPV4
   module TLS  = Tls_mirage.Make (TCP)
@@ -10,8 +10,8 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
   module HTTP  = Cohttp_mirage.Server(TCP)
   module HTTPS = Cohttp_mirage.Server(TLS)
 
-  module D  = Canopy_dispatch.Make(HTTP)(C)(DISK)
-  module DS = Canopy_dispatch.Make(HTTPS)(C)(DISK)
+  module D  = Canopy_dispatch.Make(HTTP)(C)
+  module DS = Canopy_dispatch.Make(HTTPS)(C)
 
   let log c fmt = Printf.ksprintf (C.log c) fmt
 
@@ -28,7 +28,7 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
     X509.certificate kv `Default >|= fun cert ->
     Tls.Config.server ~certificates:(`Single cert) ()
 
-  let start console stack resolver conduit disk _clock keys _ _ =
+  let start console stack resolver conduit _clock keys _ =
     let started = match Ptime.of_float_s (CLOCK.time ()) with
       | None -> invalid_arg ("Ptime.of_float_s")
       | Some t -> t
@@ -41,29 +41,29 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
     let module Store = Canopy_store.Store(C)(Context)(Inflator) in
     let open Canopy_utils in
     let cache = ref (KeyMap.empty) in
-    let open Canopy_config in
-    let config = config () in
+    Store.pull console >>= fun () ->
+    Store.base_uuid () >>= fun uuid ->
+    Store.fill_cache uuid cache >>= fun l ->
     let update_atom, atom =
-      Canopy_syndic.atom config Store.last_commit_date cache
+      Canopy_syndic.atom uuid Store.last_commit_date cache
     in
     let store_ops = {
       Canopy_dispatch.subkeys = Store.get_subkeys ;
       value = Store.get_key ;
       update =
         (fun () ->
-           cache := KeyMap.empty;
            Store.pull console >>= fun () ->
-           Store.fill_cache cache >>= fun res ->
+           Store.fill_cache uuid cache >>= fun res ->
            update_atom () >|= fun () ->
            res);
       last_commit = Store.last_commit_date ;
     } in
-    store_ops.Canopy_dispatch.update () >>= fun l ->
+    update_atom () >>= fun () ->
     Lwt_list.iter_p (C.log_s console) l >>= fun () ->
     let disp hdr =
-      `Dispatch (config, hdr, disk, store_ops, atom, cache, started)
+      `Dispatch (hdr, store_ops, atom, cache, started)
     in
-    (match config.tls_port with
+    (match Canopy_config.tls_port () with
      | Some tls_port ->
        let redir uri =
          let https = Uri.with_scheme uri (Some "https") in
@@ -73,8 +73,10 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
          in
          Uri.with_port https port
        in
-       let http = HTTP.listen (D.create console (`Redirect redir)) in
-       S.listen_tcpv4 stack ~port:config.port http ;
+       let http = HTTP.listen (D.create console (`Redirect redir))
+       and port = Canopy_config.port ()
+       in
+       S.listen_tcpv4 stack ~port http ;
        C.log_s console
          (let redirect =
             let req = Uri.of_string "http://127.0.0.1" in
@@ -82,7 +84,7 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
             Uri.to_string (redir req)
           in
           Printf.sprintf "HTTP server listening on port %d (redirecting to %s)"
-            config.port redirect
+            port redirect
          ) >>= fun () ->
        tls_init keys >>= fun tls_conf ->
        let hdr = Cohttp.Header.init_with
@@ -95,10 +97,12 @@ module Main  (C: CONSOLE) (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirag
          (Printf.sprintf "HTTPS server listening on port %d" tls_port)
      | None ->
        let hdr = Cohttp.Header.init () in
-       let http = HTTP.listen (D.create console (disp hdr)) in
-       S.listen_tcpv4 stack ~port:config.port http ;
+       let http = HTTP.listen (D.create console (disp hdr))
+       and port = Canopy_config.port ()
+       in
+       S.listen_tcpv4 stack ~port http ;
        C.log_s console
-         (Printf.sprintf "HTTP server listening on port %d" config.port)
+         (Printf.sprintf "HTTP server listening on port %d" port)
     ) >>= fun () ->
     S.listen stack
 end

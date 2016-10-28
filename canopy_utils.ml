@@ -49,9 +49,19 @@ module KeyMap = struct
   module M = Map.Make(KeyOrd)
   include M
 
+  let fold_articles f =
+    M.fold (fun k v acc -> match v with
+        | `Article a -> f k a acc
+        | _ -> acc)
+
   let find_opt m k =
     try Some (M.find k m) with
     | Not_found -> None
+
+  let find_article_opt m k =
+    match find_opt m k with
+    | Some (`Article a) -> Some a
+    | _ -> None
 end
 
 let add_etag_header time headers =

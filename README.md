@@ -32,7 +32,6 @@ header (containing `max-age=31536000`).
 ### Compiling and running Canopy
 
 You will need at least `OCaml 4.02.3`, `opam 1.2` and `mirage 2.7.0` before starting. To setup a mirage environment, please refer to the mirage website.
-You'll also need `npm`, `less-css` and `browserify` if you want to compile and retrieve everything related to the blog-styling. The `mirage configure` step takes care of fetching and recompiling all assets. If none of the mentioned programs were to be found, the configure step will use the tarball found in the `assets` directory, containing already compiled assets.
 
 Checkout Canopy repository, then go inside:
 
@@ -41,14 +40,51 @@ Checkout Canopy repository, then go inside:
 mirage configure --unix
 # Compile Canopy
 make
-# Generate a UUID for the Atom feed (only do this the first time)
-uuidtrip -r > myuuid.txt
 # Run it
-./mir-canopy -r https://github.com/Engil/Canopy-documentation.git -i Welcome -p 8080 -u "`cat myuuid.txt`"
+./mir-canopy
 ```
 
 A server will be launched using the specified URL as the git remote, `Index` as the default page rendered on the blog (it must exist within the repository) and `8080` is the listening port.
 You can see more options by running `./mir-canopy --help`.
+
+To prepare your own data repository, you have to use `npm`, `less-css` and `browserify` if you want to compile and retrieve everything related to the blog-styling. The `mirage configure` step takes care of fetching and recompiling all assets. If none of the mentioned programs were to be found, the configure step will use the tarball found in the `assets` directory, containing already compiled assets.
+
+```
+# OR start with git clone git://github.com/Engil/__blog.git ;)
+mkdir canopy-data
+cd canopy-data
+git init .
+# Populate data using npm, browserify, etc.
+if [ -x `which npm` ] ; then
+  ./populate.sh /tmp/data
+else
+  # OR use pregenerated tarball
+  cd /tmp/data && tar xf assets/assets_generated.tar.gz
+  cd /tmp/data && mv disk/static .
+fi;
+
+git add static
+
+# Generate a UUID for the Atom feed
+uuidtrip -r > .config/uuid
+# Add blog name (defaults to "Canopy")
+echo "My blog" > .config/blog_name
+git add .config
+
+git commit -m initial
+
+# configure git remote and push
+git remote add origin git@github.com/me/__blog.git
+git push origin master
+```
+
+You can run Canopy with your own data repository:
+
+```
+./mir-canopy -r git://github.com/me/__blog.git
+```
+
+You can use git branches for drafting changes: `./mir-canopy -r git://github.com/me/__blog.git#dev`.
 
 ### Compiling and running on Xen
 
@@ -108,7 +144,9 @@ Each directories will contains more pages, but that will be classified under a c
 For example, a `posts/hello-word.md` file will be a new blog post under the `Posts` category.
 You can use it to emulate some sort of tag, like for example having an `OCaml` directory regrouping all you writing in everyone's favorite language. :-)
 
-The file syntax is just plain markdown, everything should be supported out-the-box (depending on the [`ocaml-omd`](https://github.com/ocaml/omd) markdown implementation), with a little bit of extra informations absolutely needed at the top of each files.
+Static assets (not processed) can be added into "static" subdir, configuration values below ".config".
+
+The file syntax of articles is just plain markdown, everything should be supported out-the-box (depending on the [`ocaml-omd`](https://github.com/ocaml/omd) markdown implementation), with a little bit of extra informations absolutely needed at the top of each files.
 
 ```
 ---

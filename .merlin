@@ -12,6 +12,7 @@ PKG tyxml
 PKG mirage-console
 PKG syndic
 PKG ptime
+PKG uuidm
 
 S .
 B _build

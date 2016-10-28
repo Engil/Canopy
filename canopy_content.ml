@@ -17,7 +17,7 @@ let meta_assoc str =
       let value = Re_str.matched_group 2 meta in
       key, value)
 
-let of_string ~uri ~created ~updated ~content =
+let of_string ~base_uuid ~uri ~created ~updated ~content =
   let splitted_content = Re_str.bounded_split (Re_str.regexp "---") content 2 in
   match splitted_content with
   | [raw_meta;raw_content] ->
@@ -28,7 +28,7 @@ let of_string ~uri ~created ~updated ~content =
           match assoc_opt "content" meta with
           | Some "markdown"
           | None ->
-            Canopy_article.of_string meta uri created updated raw_content
+            Canopy_article.of_string base_uuid meta uri created updated raw_content
             |> map_opt (fun article -> Ok (Markdown article)) (Error "Error while parsing article")
           | Some _ -> Unknown
         end
@@ -44,8 +44,8 @@ let to_tyxml = function
 let to_tyxml_listing_entry = function
   | Markdown m -> Canopy_article.to_tyxml_listing_entry m
 
-let to_atom = function
-  | Markdown m -> Canopy_article.to_atom m
+let to_atom cache = function
+  | Markdown m -> Canopy_article.to_atom cache m
 
 let find_tag tagname = function
   | Markdown m ->
@@ -63,7 +63,7 @@ let updated = function
 
 let tags content_map =
   let module S = Set.Make(String) in
-  let s = KeyMap.fold (
+  let s = KeyMap.fold_articles (
       fun _k v s -> match v with
         | Markdown m ->
           let s' = S.of_list m.Canopy_article.tags in
