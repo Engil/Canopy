@@ -16,7 +16,7 @@ module Make (S: Cohttp_lwt.Server) = struct
     let headers = Cohttp.Header.init_with "location" (Uri.to_string uri) in
     S.respond ~headers ~status:`Moved_permanently ~body:`Empty ()
 
-  let rec dispatcher headers store atom cache uri etag =
+  let rec dispatcher headers store atom cache history_cache uri etag =
     let open Canopy_utils in
     let respond_not_found () =
       S.respond_string ~headers ~status:`Not_found ~body:"Not found" ()
@@ -38,7 +38,7 @@ module Make (S: Cohttp_lwt.Server) = struct
     match Re_str.split (Re_str.regexp "/") (Uri.pct_decode uri) with
     | [] ->
       let index_page = Canopy_config.index_page !cache in
-      dispatcher headers store atom cache index_page etag
+      dispatcher headers store atom cache history_cache index_page etag
     | "atom" :: [] ->
       atom () >>= fun body ->
       store.last_commit () >>= fun updated ->
@@ -70,6 +70,10 @@ module Make (S: Cohttp_lwt.Server) = struct
           let title = Canopy_config.blog_name !cache in
           respond_html ~headers ~title ~content ~updated
       )
+    | "recent_activity" :: [] ->
+      let content = Canopy_article.to_tyxml_history history_cache in
+      store.last_commit () >>= fun updated ->
+      respond_html ~headers ~title:"Recent activity" ~content ~updated
     | key ->
       begin
         match KeyMap.find_opt !cache key with
@@ -130,11 +134,11 @@ module Make (S: Cohttp_lwt.Server) = struct
            moved_permanently redirect >|= fun (res, body) ->
            log request res ;
            (res, body))
-      | `Dispatch (headers, store, atom, content) ->
+      | `Dispatch (headers, store, atom, content, history_cache) ->
         (fun _ request _ ->
            let uri = Cohttp.Request.uri request in
            let etag = Cohttp.Header.get Cohttp.Request.(request.headers) "if-none-match" in
-           dispatcher headers store atom content (Uri.path uri) etag >|= fun (res, body) ->
+           dispatcher headers store atom content history_cache (Uri.path uri) etag >|= fun (res, body) ->
            log request res ;
            (res, body))
     in

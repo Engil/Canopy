@@ -52,6 +52,15 @@ let to_tyxml article =
       Tyxml.Html.article [Unsafe.data article.content]
     ]]
 
+let to_tyxml_history cache =
+  let activity_list = KeyMap.fold (fun k v list -> v :: list) cache [] in
+  let format_activity activity =
+    li ~a:[] [pcdata activity]
+  in
+  let activity_list_html = List.map format_activity activity_list in
+  [div
+    [ul ~a:[] activity_list_html]]
+
 let to_tyxml_listing_entry article =
   let author = "Written by " ^ article.author in
   let abstract = match article.abstract with

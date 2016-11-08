@@ -77,6 +77,34 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
     in
     Topological.fold aux history (Lwt.return (commit, commit, None))
 
+  let fill_history_cache () =
+    new_task () >>= fun t ->
+    repo () >>= fun repo ->
+    Store.history (t "Reading history") >>= fun history ->
+    let fn key value cache =
+      value () >>= fun value ->
+      match key_type key with
+      | `Article -> (
+        let uri = String.concat "/" key in
+        match KeyMap.find_opt cache key with
+        | None ->
+          let create_event = Printf.sprintf "Article added: %s" uri in
+          KeyMap.add key create_event cache |> Lwt.return
+        | Some old_value ->
+          if old_value = value then Lwt.return cache
+          else
+            let update_event = Printf.sprintf "Article modified: %s" uri in
+            KeyMap.add key update_event cache |> Lwt.return
+        )
+      | `Static | `Config -> Lwt.return cache
+    in
+    let aux commit_id acc =
+      Store.of_commit_id (Irmin.Task.none) commit_id repo >>= fun store ->
+      acc >>= fun acc ->
+      fold (store ()) fn acc
+    in
+    Topological.fold aux history (Lwt.return KeyMap.empty)
+
   let date_updated_created key =
     new_task () >>= fun t  ->
     repo () >>= fun repo ->
