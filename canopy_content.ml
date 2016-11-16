@@ -8,6 +8,18 @@ type error_t =
   | Error of string
   | Ok of content_t
 
+let of_c_history timestamp diffs =
+  List.map (fun diff ->
+    let date = match timestamp with
+      | None -> ""
+      | Some timestamp -> ptime_to_pretty_date timestamp
+    in
+    match diff with
+    | _, `Added value -> Printf.sprintf "+ : %s %s" value date
+    | _, `Removed value -> Printf.sprintf "- : %s %s" value date
+    | _, `Updated (removed, added) -> Printf.sprintf "* : %s and %s %s" removed added date
+  ) diffs
+
 let meta_assoc str =
   Re_str.split (Re_str.regexp "\n") str |>
   List.map (fun meta ->

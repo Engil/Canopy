@@ -2,6 +2,7 @@ open Lwt.Infix
 open Canopy_config
 open Canopy_utils
 
+
 module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
 
   module Hash = Irmin.Hash.SHA1
@@ -9,6 +10,7 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
   module Store = Mirage_git_memory(Irmin.Contents.String)(Irmin.Ref.String)(Hash)
   module Sync = Irmin.Sync(Store)
   module Topological = Graph.Topological.Make(Store.History)
+  module View = Irmin.View(Store)
 
   let src = Logs.Src.create "canopy-store" ~doc:"Canopy store logger"
   module Log = (val Logs.src_log src : Logs.LOG)
@@ -77,33 +79,35 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
     in
     Topological.fold aux history (Lwt.return (commit, commit, None))
 
+  let set_diffs repo c1 c2 =
+    let view_of_commit repo commit_id =
+      Store.of_commit_id task commit_id repo >>= fun t ->
+      View.of_path (t "view") []
+    in
+    view_of_commit repo c1 >>= fun v1 ->
+    view_of_commit repo c2 >>= fun v2 ->
+    View.diff v1 v2 >|= fun diffs ->
+    diffs
+
   let fill_history_cache () =
     new_task () >>= fun t ->
     repo () >>= fun repo ->
     Store.history (t "Reading history") >>= fun history ->
-    let fn key value cache =
-      value () >>= fun value ->
-      match key_type key with
-      | `Article -> (
-        let uri = String.concat "/" key in
-        match KeyMap.find_opt cache key with
-        | None ->
-          let create_event = Printf.sprintf "Article added: %s" uri in
-          KeyMap.add key create_event cache |> Lwt.return
-        | Some old_value ->
-          if old_value = value then Lwt.return cache
-          else
-            let update_event = Printf.sprintf "Article modified: %s" uri in
-            KeyMap.add key update_event cache |> Lwt.return
-        )
-      | `Static | `Config -> Lwt.return cache
-    in
     let aux commit_id acc =
-      Store.of_commit_id (Irmin.Task.none) commit_id repo >>= fun store ->
       acc >>= fun acc ->
-      fold (store ()) fn acc
+      match acc with
+      | None, acc_list ->
+        (Some commit_id, acc_list) |> Lwt.return
+      | Some prev_commit_id, acc_list ->
+        Store.Repo.task_of_commit_id repo commit_id >>= fun task ->
+        let timestamp = Irmin.Task.date task |> Int64.to_float |> Ptime.of_float_s in
+        set_diffs repo prev_commit_id commit_id >|= fun diffs ->
+        let c_history = Canopy_content.of_c_history timestamp diffs in
+        let acc_list = List.append acc_list c_history in
+        (Some commit_id, acc_list)
     in
-    Topological.fold aux history (Lwt.return KeyMap.empty)
+    Topological.fold aux history (Lwt.return (None, [])) >|= fun (_, diffs) ->
+    diffs
 
   let date_updated_created key =
     new_task () >>= fun t  ->

@@ -52,12 +52,11 @@ let to_tyxml article =
       Tyxml.Html.article [Unsafe.data article.content]
     ]]
 
-let to_tyxml_history cache =
-  let activity_list = KeyMap.fold (fun k v list -> v :: list) cache [] in
-  let format_activity activity =
-    li ~a:[] [pcdata activity]
+let to_tyxml_history history_cache =
+  let format_activity history =
+    li ~a:[] [pcdata history]
   in
-  let activity_list_html = List.map format_activity activity_list in
+  let activity_list_html = List.map format_activity history_cache in
   [div
     [ul ~a:[] activity_list_html]]
 
