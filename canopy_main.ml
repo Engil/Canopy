@@ -48,7 +48,7 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: V
     Store.pull () >>= fun () ->
     Store.base_uuid () >>= fun uuid ->
     Store.fill_cache uuid >>= fun new_cache ->
-    Store.fill_history_cache () >>= fun history_cache ->
+    Store.fill_diffs () >>= fun diffs ->
     let cache = ref (new_cache) in
     let update_atom, atom =
       Canopy_syndic.atom uuid Store.last_commit_date cache
@@ -65,7 +65,7 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: V
       last_commit = Store.last_commit_date ;
     } in
     update_atom () >>= fun () ->
-    let disp hdr = `Dispatch (hdr, store_ops, atom, cache, history_cache) in
+    let disp hdr = `Dispatch (hdr, store_ops, atom, cache, diffs) in
     (match Canopy_config.tls_port () with
      | Some tls_port ->
        let redir uri =

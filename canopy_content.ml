@@ -8,17 +8,22 @@ type error_t =
   | Error of string
   | Ok of content_t
 
-let of_c_history timestamp diffs =
-  List.map (fun diff ->
+let of_diffs timestamp diffs =
+  let fn (key, diff) =
     let date = match timestamp with
       | None -> ""
       | Some timestamp -> ptime_to_pretty_date timestamp
     in
+    let file = String.concat "/" key in
     match diff with
-    | _, `Added value -> Printf.sprintf "+ : %s %s" value date
-    | _, `Removed value -> Printf.sprintf "- : %s %s" value date
-    | _, `Updated (removed, added) -> Printf.sprintf "* : %s and %s %s" removed added date
-  ) diffs
+    | `Added value ->
+      Printf.sprintf "Added %s on %s : \n%s" file date value
+    | `Removed value ->
+      Printf.sprintf "Removed %s on %s : \n%s" file date value
+    | `Updated (new_value, old_value) ->
+      Printf.sprintf "Modified %s on %s : \n%s\n%s" file date new_value old_value
+  in
+  List.map fn diffs
 
 let meta_assoc str =
   Re_str.split (Re_str.regexp "\n") str |>

@@ -52,12 +52,12 @@ let to_tyxml article =
       Tyxml.Html.article [Unsafe.data article.content]
     ]]
 
-let to_tyxml_history history_cache =
+let to_tyxml_activity diffs =
   let format_activity history =
     li ~a:[] [pcdata history]
   in
-  let activity_list_html = List.map format_activity history_cache in
-  [div
+  let activity_list_html = List.map format_activity (List.rev diffs) in
+  [div ~a:[a_class ["post"]]
     [ul ~a:[] activity_list_html]]
 
 let to_tyxml_listing_entry article =
