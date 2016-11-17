@@ -87,7 +87,12 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
     view_of_commit repo c1 >>= fun v1 ->
     view_of_commit repo c2 >>= fun v2 ->
     View.diff v1 v2 >|= fun diffs ->
-    diffs
+    List.filter (
+      fun (key, _) ->
+      match key_type key with
+      | `Article -> true
+      | _ -> false
+    ) diffs
 
   let fill_history_cache () =
     new_task () >>= fun t ->
