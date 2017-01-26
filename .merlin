@@ -4,8 +4,8 @@ PKG mirage
 PKG omd
 PKG calendar
 PKG decompress
-PKG irmin.mirage
-PKG irmin.git
+PKG irmin-mirage
+PKG irmin-git
 PKG mirage-http
 PKG tls.mirage
 PKG tyxml

@@ -1,7 +1,8 @@
 open Lwt
-open V1_LWT
+open Mirage_types_lwt
+open Result
 
-module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: V1.CLOCK) (KEYS: KV_RO) = struct
+module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: PCLOCK) (KEYS: KV_RO) = struct
 
   module TCP  = S.TCPV4
   module TLS  = Tls_mirage.Make (TCP)
@@ -17,20 +18,17 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: V
   module Log = (val Logs.src_log src : Logs.LOG)
 
   let with_tls cfg tcp f =
-    let peer, port = TCP.get_dest tcp in
+    let peer, port = TCP.dst tcp in
     TLS.server_of_flow cfg tcp >>= function
-    | `Error e ->
-      Log.warn (fun f -> f "%s:%d TLS failed %s" (Ipaddr.V4.to_string peer) port (TLS.error_message e)) ;
+    | Error e ->
+      Log.warn (fun f -> f "%s:%d TLS failed %a" (Ipaddr.V4.to_string peer) port TLS.pp_write_error e);
       TCP.close tcp
-    | `Ok tls ->
+    | Ok tls ->
       Log.info (fun f -> f "%s:%d TLS ok" (Ipaddr.V4.to_string peer) port);
       f tls >>= fun () -> TLS.close tls
-    | `Eof ->
-      Log.info (fun f -> f "%s:%d TLS eof" (Ipaddr.V4.to_string peer) port);
-      TCP.close tcp
 
   let with_tcp tcp f =
-    let peer, port = TCP.get_dest tcp in
+    let peer, port = TCP.dst tcp in
     Log.info (fun f -> f "%s:%d TCP established" (Ipaddr.V4.to_string peer) port);
     f tcp >>= fun () -> TCP.close tcp
 

@@ -23,47 +23,30 @@ let tls_port_k =
 
 (* Dependencies *)
 
-let libraries = [
-    "omd" ;
-    "ptime";
-    "decompress";
-    "irmin.mirage";
-    "irmin.git";
-    "mirage-http";
-    "tls.mirage";
-    "tyxml";
-    "syndic";
-    "uuidm";
-    "logs";
-  ]
-
 let packages = [
-    "omd" ;
-    "tyxml";
-    "ptime";
-    "decompress";
-    "irmin";
-    "mirage-http";
-    "mirage-flow";
-    "tls";
-    "mirage-types-lwt";
-    "channel";
-    "mirage-git";
-    "re";
-    "cohttp";
-    "syndic";
-    "magic-mime";
-    "uuidm";
-    "logs"
-  ]
+  package "omd" ;
+  package "tyxml";
+  package "ptime";
+  package "decompress";
+  package "irmin";
+  package "irmin-mirage";
+  package "mirage-http";
+  package "mirage-flow";
+  package ~sublibs:["mirage"] "tls";
+  package "re";
+  package "cohttp";
+  package "syndic";
+  package "magic-mime";
+  package "uuidm";
+  package "logs";
+]
 
 
 (* Network stack *)
-
 let stack =
-  match get_mode () with
-  | `Xen -> generic_stackv4 default_console tap0
-  | `Unix | `MacOSX -> socket_stackv4 default_console [Ipaddr.V4.any]
+  if_impl Key.is_unix
+    (socket_stackv4 [Ipaddr.V4.any])
+    (generic_stackv4 default_network)
 
 let () =
   let keys = Key.([
@@ -75,15 +58,14 @@ let () =
   in
   register "canopy" [
     foreign
-      ~libraries
       ~deps:[abstract nocrypto]
       ~keys
       ~packages
       "Canopy_main.Main"
-      (stackv4 @-> resolver @-> conduit @-> clock @-> kv_ro @-> job)
+      (stackv4 @-> resolver @-> conduit @-> pclock @-> kv_ro @-> job)
     $ stack
     $ resolver_dns stack
     $ conduit_direct ~tls:true stack
-    $ default_clock
+    $ default_posix_clock
     $ crunch "tls"
   ]
