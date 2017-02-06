@@ -2,6 +2,7 @@ open Lwt.Infix
 open Canopy_config
 open Canopy_utils
 
+
 module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
 
   module Hash = Irmin.Hash.SHA1
@@ -9,6 +10,7 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
   module Store = Mirage_git_memory(Irmin.Contents.String)(Irmin.Ref.String)(Hash)
   module Sync = Irmin.Sync(Store)
   module Topological = Graph.Topological.Make(Store.History)
+  module View = Irmin.View(Store)
 
   let src = Logs.Src.create "canopy-store" ~doc:"Canopy store logger"
   module Log = (val Logs.src_log src : Logs.LOG)
@@ -76,6 +78,41 @@ module Store (CTX: Irmin_mirage.CONTEXT) (INFL: Git.Inflate.S) = struct
       | Some _, Some _ -> (created, commit_id, data)
     in
     Topological.fold aux history (Lwt.return (commit, commit, None))
+
+  let get_diffs repo c1 c2 =
+    let view_of_commit repo commit_id =
+      Store.of_commit_id task commit_id repo >>= fun t ->
+      View.of_path (t "view") []
+    in
+    view_of_commit repo c1 >>= fun v1 ->
+    view_of_commit repo c2 >>= fun v2 ->
+    View.diff v1 v2 >|= fun diffs ->
+    List.filter (
+      fun (key, _) ->
+      match key_type key with
+      | `Article -> true
+      | _ -> false
+    ) diffs
+
+  let fill_diffs () =
+    new_task () >>= fun t ->
+    repo () >>= fun repo ->
+    Store.history (t "Reading history") >>= fun history ->
+    let aux commit_id acc =
+      acc >>= fun acc ->
+      match acc with
+      | None, acc_list ->
+        (Some commit_id, acc_list) |> Lwt.return
+      | Some prev_commit_id, acc_list ->
+        Store.Repo.task_of_commit_id repo commit_id >>= fun task ->
+        let timestamp = Irmin.Task.date task |> Int64.to_float |> Ptime.of_float_s in
+        get_diffs repo prev_commit_id commit_id >|= fun diffs ->
+        let diffs = Canopy_content.of_diffs timestamp diffs in
+        let acc_list = List.append acc_list diffs in
+        (Some commit_id, acc_list)
+    in
+    Topological.fold aux history (Lwt.return (None, [])) >|= fun (_, diffs) ->
+    diffs
 
   let date_updated_created key =
     new_task () >>= fun t  ->

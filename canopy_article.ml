@@ -52,6 +52,22 @@ let to_tyxml article =
       Tyxml.Html.article [Unsafe.data article.content]
     ]]
 
+let to_tyxml_activity diffs =
+  let format_activity (header, content) =
+    let paragraphs =
+      Printf.printf "Content: %s" content;
+      let lines = Re_str.split (Re_str.regexp "\n") content in
+      List.map (fun line -> p ~a:[a_class ["line"]] [pcdata line] ) lines
+    in
+    div ~a:[a_class ["list-group-item"]] [
+      h5 ~a:[a_class ["list-group-item-heading"]] [pcdata header];
+      div ~a:[a_class ["list-group-item-text"]] paragraphs
+    ]
+  in
+  let activity_list_html = List.map format_activity (List.rev diffs) in
+  [div ~a:[a_class ["flex-container"]]
+    [div ~a:[a_class ["list-group"; "listing"]] activity_list_html]]
+
 let to_tyxml_listing_entry article =
   let author = "Written by " ^ article.author in
   let abstract = match article.abstract with

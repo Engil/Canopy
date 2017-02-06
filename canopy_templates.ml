@@ -16,13 +16,16 @@ let taglist tags =
      div ~a:[a_class ["tags"]] ([pcdata "Classified under: "] ++ tags)
 
 let links keys =
+  let recent_activity_link =
+    li [a ~a:[a_href "/recent_activity"] [span [pcdata "Recent Activity"]]]
+  in
   let paths = List.map (function
 			 | x::_ -> x
 			 | _ -> assert false
 		       ) keys |> List.sort_uniq (Pervasives.compare) in
   let format_link link =
     li [ a ~a:[a_href ("/" ^ link)] [span [pcdata link]]] in
-  List.map format_link paths
+  recent_activity_link :: (List.map format_link paths)
 
 let main ~cache ~content ~title ~keys =
   let links = links keys in
