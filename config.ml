@@ -39,6 +39,7 @@ let packages = [
   package "magic-mime";
   package "uuidm";
   package "logs";
+  package "acme";
 ]
 
 
