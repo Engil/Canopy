@@ -1,77 +1,43 @@
-module Inflate = Decompress.Inflate.Make(Decompress.ExtString)(Decompress.ExtBytes)
-module Deflate = Decompress.Deflate.Make(Decompress.ExtString)(Decompress.ExtBytes)
+let input_buffer = Bytes.create 0xFFFF
+let output_buffer = Bytes.create 0xFFFF
+let window = Decompress.Window.create ~proof:Decompress.B.proof_bytes
 
-let deflate ?level buff =
-  let len      = Cstruct.len buff in
-  let position = ref 0 in
+let deflate ?(level = 4) buff =
+  let pos = ref 0 in
+  let res = Buffer.create (Cstruct.len buff) in
 
-  let input  = Bytes.create 1024 in
-  let output = Bytes.create 1024 in
-  let buffer = Buffer.create (Cstruct.len buff) in
-
-  let refill' _ =
-    let n = min (len - !position) 1024 in
-    Cstruct.blit_to_bytes buff !position input 0 n;
-    position := !position + n;
-    if !position >= len then true, n else false, n
-  in
-
-  let flush' _ len =
-    Buffer.add_subbytes buffer output 0 len;
-    len
-  in
-
-  Deflate.compress ?level (Bytes.unsafe_to_string input) output refill' flush';
-  Cstruct.of_string (Buffer.contents buffer)
+  Decompress.Deflate.bytes
+    input_buffer output_buffer
+    (fun input_buffer ->
+     let n = min 0xFFFF (Cstruct.len buff - !pos) in
+     Cstruct.blit_to_bytes buff !pos input_buffer 0 n;
+     pos := !pos + n;
+     n)
+    (fun output_buffer len ->
+     Buffer.add_subbytes res output_buffer 0 len;
+     0xFFFF)
+    (Decompress.Deflate.default ~proof:Decompress.B.proof_bytes level)
+  |> function
+     | Ok t -> Cstruct.of_string @@ Buffer.contents res
+     | Error exn -> failwith "Deflate.deflate"
 
 let inflate ?output_size orig =
-  let buff = Mstruct.clone orig in
-  let output_size =
-    match output_size with
-    | None -> Mstruct.length orig
-    | Some s -> s
-  in
-  let input  = Bytes.create 1024 in
-  let output = Bytes.create 1024 in
-  let buffer = Buffer.create output_size in
-  let s      = ref 0 in
-
-  let inflater = Inflate.make (Bytes.unsafe_to_string input) output in
-
-  let refill' () =
-    let n = min (Mstruct.length buff) 1024 in
-    let i = Mstruct.get_string buff n in
-    Bytes.blit_string i 0 input 0 n;
-    n
+  let res = Buffer.create (match output_size with
+                           | Some len -> len
+                           | None -> Mstruct.length orig)
   in
 
-  let flush' len =
-    Buffer.add_subbytes buffer output 0 len;
-    len
-  in
-
-  let len = refill' () in
-  Inflate.refill inflater len;
-  Inflate.flush inflater 1024;
-
-  let rec aux () = match Inflate.eval inflater with
-    | `Ok ->
-       let drop = flush' (Inflate.contents inflater) in
-       s := !s + Inflate.used_in inflater;
-       Inflate.flush inflater drop
-    | `Flush ->
-       let drop = flush' (Inflate.contents inflater) in
-       Inflate.flush inflater drop;
-       aux ()
-    | `Wait ->
-       let len = refill' () in
-       s := !s + Inflate.used_in inflater;
-       Inflate.refill inflater len;
-       aux ()
-    | `Error -> failwith "Inflate.inflate"
-  in
-
-  try aux ();
-      Mstruct.shift orig !s;
-      Some (Mstruct.of_string (Buffer.contents buffer))
-  with _ -> None
+  Decompress.Inflate.bytes
+    input_buffer output_buffer
+    (fun input_buffer ->
+     let n = min 0xFFFF (Mstruct.length orig) in
+     let s = Mstruct.get_string orig n in
+     Bytes.blit_string s 0 input_buffer 0 n;
+     n)
+    (fun output_buffer len ->
+     Buffer.add_subbytes res output_buffer 0 len;
+     0xFFFF)
+    (Decompress.Inflate.default (Decompress.Window.reset window))
+  |> function
+     | Ok _ -> Mstruct.of_string @@ Buffer.contents res
+     | Error exn -> failwith "Inflate.inflate"
