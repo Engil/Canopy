@@ -44,6 +44,10 @@ make
 ./mir-canopy
 ```
 
+Note: if you run Canopy with a grsec kernel you might have to relax
+memory-mapping restrictions (i.e.: `paxctl -cm canopy`) and load the `tun`
+module.
+
 A server will be launched using the specified URL as the git remote, `Index` as the default page rendered on the blog (it must exist within the repository) and `8080` is the listening port.
 You can see more options by running `./mir-canopy --help`.
 
