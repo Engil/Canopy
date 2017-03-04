@@ -36,6 +36,45 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
     X509.certificate kv `Default >|= fun cert ->
     Tls.Config.server ~certificates:(`Single cert) ()
 
+
+  let http_redirect_https tls_port uri =
+    let https = Uri.with_scheme uri (Some "https") in
+    let port = match tls_port, Uri.port uri with
+      | 443, None -> None
+      | _ -> Some tls_port
+    in
+    Uri.with_port https port
+
+  let start_https tls_port stack keys disp =
+    let redir = http_redirect_https tls_port in
+    let http_callback = HTTP.listen (D.create (`Redirect redir)) in
+    let http flow = with_tcp flow http_callback
+    and port = Canopy_config.port ()
+    in
+    S.listen_tcpv4 stack ~port http ;
+    Log.info (fun f -> f "HTTP server listening on port %d, \
+                          redirecting to https service on port %d"
+                         port tls_port) ;
+    tls_init keys >|= fun tls_conf ->
+    let hdr = Cohttp.Header.init_with
+                "Strict-Transport-Security" "max-age=31536000" (* in seconds, roughly a year *)
+    in
+    let callback = HTTPS.listen (DS.create (disp hdr)) in
+    let https flow = with_tls tls_conf flow callback in
+    S.listen_tcpv4 stack ~port:tls_port https ;
+    Log.info (fun f -> f "HTTPS server listening on port %d" tls_port)
+
+  let start_http stack disp =
+    let hdr = Cohttp.Header.init () in
+    let http_callback = HTTP.listen (D.create (disp hdr)) in
+    let http flow = with_tcp flow http_callback
+    and port = Canopy_config.port ()
+    in
+    S.listen_tcpv4 stack ~port http ;
+    Log.info (fun f -> f "HTTP server listening on port %d" port) ;
+    Lwt.return_unit
+
+
   let start stack resolver conduit _clock keys _ =
     let (module Context) = Irmin_mirage.context (resolver, conduit) in
     let module Store = Canopy_store.Store(Context)(Inflator) in
@@ -60,40 +99,8 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
     update_atom () >>= fun () ->
     let disp hdr = `Dispatch (hdr, store_ops, atom, cache) in
     (match Canopy_config.tls_port () with
-     | Some tls_port ->
-       let redir uri =
-         let https = Uri.with_scheme uri (Some "https") in
-         let port = match tls_port, Uri.port uri with
-           | 443, None -> None
-           | _ -> Some tls_port
-         in
-         Uri.with_port https port
-       in
-       let http_callback = HTTP.listen (D.create (`Redirect redir)) in
-       let http flow = with_tcp flow http_callback
-       and port = Canopy_config.port ()
-       in
-       S.listen_tcpv4 stack ~port http ;
-       Log.info (fun f -> f "HTTP server listening on port %d, \
-                             redirecting to https service on port %d"
-                    port tls_port) ;
-       tls_init keys >|= fun tls_conf ->
-       let hdr = Cohttp.Header.init_with
-           "Strict-Transport-Security" "max-age=31536000" (* in seconds, roughly a year *)
-       in
-       let callback = HTTPS.listen (DS.create (disp hdr)) in
-       let https flow = with_tls tls_conf flow callback in
-       S.listen_tcpv4 stack ~port:tls_port https ;
-       Log.info (fun f -> f "HTTPS server listening on port %d" tls_port)
-     | None ->
-       let hdr = Cohttp.Header.init () in
-       let http_callback = HTTP.listen (D.create (disp hdr)) in
-       let http flow = with_tcp flow http_callback
-       and port = Canopy_config.port ()
-       in
-       S.listen_tcpv4 stack ~port http ;
-       Log.info (fun f -> f "HTTP server listening on port %d" port) ;
-       Lwt.return_unit
+     | Some tls_port -> start_https tls_port stack keys disp
+     | None -> start_http stack disp
     ) >>= fun () ->
     S.listen stack
 end
