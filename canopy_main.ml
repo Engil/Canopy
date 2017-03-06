@@ -81,9 +81,8 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
           let csr_pem = Cstruct.to_string csr_pem in
           let directory_url = Acme.letsencrypt_staging_url in
           (* XXX. this is wrong. *)
-          let domain = "test.tumbolandia.net" in
           Log.info (fun f -> f "%s\n%s" rsa_pem csr_pem) ;
-          Acme_client.get_crt directory_url rsa_pem csr_pem writef domain >>= function
+          Acme_client.get_crt directory_url rsa_pem csr_pem writef >>= function
           | Error e -> fail_with e
           | Ok crt ->
              let certs = Cstruct.of_string crt |>
