@@ -92,7 +92,6 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
              | Some pk -> return (certs, pk)
 
   let tls_init cert =
-    (* X509.certificate kv `Default >|= fun cert -> *)
     Tls.Config.server ~certificates:(`Single cert) () |> return
 
   let http_redirect_https tls_port uri =
@@ -113,9 +112,12 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
     Log.info (fun f -> f "HTTP server listening on port %d, \
                           redirecting to https service on port %d"
                          port tls_port) ;
-    (* XXX. if the keys are not provided, attempt to create an ACME account *)
-    acme_init keys >>= fun cert ->
-    (* XXX. if the keys are already present in tls/, just use them *)
+    try_bind  (fun () -> X509.certificate keys `Default)
+              (* if keys are provided in tls/, just use them *)
+              (fun x  -> return x)
+              (* if keys are not provided, fetch them through letsencrypt. *)
+              (fun x  -> acme_init keys)
+    >>= fun cert ->
     tls_init cert >>= fun tls_conf ->
     let hdr = Cohttp.Header.init_with
                 "Strict-Transport-Security" "max-age=31536000" (* in seconds, roughly a year *)
