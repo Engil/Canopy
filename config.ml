@@ -40,6 +40,7 @@ let packages = [
   package "uuidm";
   package "logs";
   package "acme";
+  package "x509";
 ]
 
 
