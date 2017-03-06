@@ -13,9 +13,9 @@ Canopy is written in OCaml using MirageOS and [Irmin][irmin].  It is running on 
 ### HTTPS/TLS support
 
 Canopy has TLS support, you have to first create your TLS private key and get a
-signed certificate (using [certify](https://github.com/yomimono/ocaml-certify)
-and/or [let's encrypt](https://letsencrypt.org/) - sorry, no let's encrypt
-client in OCaml yet).
+signed certificate (using [certify](https://github.com/yomimono/ocaml-certify).
+Otherwise, you can just use [let's encrypt](https://letsencrypt.org/) support
+putting your account key and the certificate signing request.
 
 Put your unencrypted private key into `tls/server.key`, and your full
 certificate chain (starting with the server certificate, then the intermediate
