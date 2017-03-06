@@ -35,6 +35,7 @@ let libraries = [
     "syndic";
     "uuidm";
     "logs";
+    "simple-diff"
   ]
 
 let packages = [
@@ -54,7 +55,8 @@ let packages = [
     "syndic";
     "magic-mime";
     "uuidm";
-    "logs"
+    "logs";
+    "simple-diff"
   ]
 
 

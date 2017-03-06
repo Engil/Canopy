@@ -9,80 +9,8 @@ type error_t =
   | Error of string
   | Ok of content_t
 
-type diff_lines_t =
-  | Deleted of string array
-  | Added of string array
-  | Equal of string array
 
-
-let rec get_diff old_lines new_lines =
-  match (old_lines, new_lines) with
-  | ([||], [||]) -> []
-  | _ ->
-    let old_index_map = Hashtbl.create 3000 in
-
-    for i = 0 to Array.length old_lines - 1 do
-      let line = old_lines.(i) in
-      if Hashtbl.mem old_index_map line then
-        let old_val = Hashtbl.find old_index_map line in
-        Hashtbl.replace old_index_map line (Array.append old_val [|i|]);
-      else
-        Hashtbl.add old_index_map line [|i|];
-    done;
-
-    let overlap = ref (Hashtbl.create 0) in
-    let sub_start_old = ref 0 in
-    let sub_start_new = ref 0 in
-    let longest_subsequence = ref 0 in
-
-    for new_index = 0 to Array.length new_lines - 1 do
-      let new_overlap = Hashtbl.create 3000 in
-      let indices = try Hashtbl.find old_index_map new_lines.(new_index) with
-        | Not_found -> [||]
-      in
-      for i = 0 to Array.length indices - 1 do
-        let old_index = indices.(i) in
-        let new_subsequence = (try Hashtbl.find !overlap (old_index - 1) with
-          | Not_found -> 0) + 1
-        in
-        Hashtbl.add new_overlap old_index new_subsequence;
-
-        if new_subsequence > !longest_subsequence then
-          let () = Printf.printf "new_index - %i; old_index - %i; sub_start_new: %i\n" new_index old_index !sub_start_new in
-          sub_start_old := old_index - new_subsequence + 1;
-          sub_start_new := new_index - new_subsequence + 1;
-          longest_subsequence := new_subsequence;
-      done;
-      overlap := new_overlap;
-    done;
-
-    if !longest_subsequence == 0 then
-      [Deleted old_lines; Added new_lines]
-    else
-      let old_lines_length = Array.length old_lines in
-      let new_lines_length = Array.length new_lines in
-      let () = Printf.printf "old_lines_length: %i\n" old_lines_length in
-      let () = Printf.printf "new_lines_length: %i\n" new_lines_length in
-      Printf.printf "sub_start_old: %i\n" !sub_start_old;
-      Printf.printf "sub_start_new: %i\n" !sub_start_new;
-      let old_lines_presubseq = Array.sub old_lines 0 !sub_start_old in
-      let new_lines_presubseq = Array.sub new_lines 0 !sub_start_new in
-      Printf.printf "old_subsequence: %i\n" (!sub_start_old + !longest_subsequence);
-      Printf.printf "new_subsequence: %i\n" (!sub_start_new + !longest_subsequence);
-      let old_lines_postsubseq =
-        let starting_index = !sub_start_old + !longest_subsequence in
-        Array.sub old_lines starting_index (old_lines_length - starting_index)
-      in
-      Printf.printf "new_lines\n";
-      let new_lines_postsubseq =
-        let starting_index = !sub_start_new + !longest_subsequence in
-        Array.sub new_lines starting_index (new_lines_length - starting_index)
-      in
-      let unchanged_lines = Array.sub new_lines !sub_start_new !longest_subsequence in
-      get_diff old_lines_presubseq new_lines_presubseq @
-      [Equal unchanged_lines] @
-      get_diff old_lines_postsubseq new_lines_postsubseq
-
+module Canopy_diff = Simple_diff.Make(String)
 
 let string_of_diff diffs =
   let concat symbol lines =
@@ -90,10 +18,11 @@ let string_of_diff diffs =
     String.concat "\n" lines
   in
   let stringify str diff =
+    let open Canopy_diff in
     match diff with
     | Added lines   -> str ^ concat "+" lines
-    | Deleted lines   -> str ^ concat "-" lines
-    | Equal lines -> str
+    | Deleted lines -> str ^ concat "-" lines
+    | Equal lines   -> str
   in
   List.fold_left stringify "" diffs
 
@@ -110,10 +39,14 @@ let of_diffs timestamp diffs =
       (Printf.sprintf "%s : created (%s)" file date), value
     | `Removed value ->
       (Printf.sprintf "%s : deleted (%s)" file date), value
-    | `Updated (new_value, old_value) ->
+    | `Updated (old_value, new_value) ->
+      Printf.printf "Date: %s\n" date;
+      Printf.printf "File: %s\n" file;
+      Printf.printf "Old_value: \n%s\n" old_value;
+      Printf.printf "New_value: \n%s\n" new_value;
       let new_lines = Re_str.split (Re_str.regexp "\n") new_value |> Array.of_list in
       let old_lines = Re_str.split (Re_str.regexp "\n") old_value |> Array.of_list in
-      let content = get_diff old_lines new_lines |> string_of_diff in
+      let content = Canopy_diff.get_diff old_lines new_lines |> string_of_diff in
       (Printf.sprintf "%s : edited (%s)" file date), content
   in
   List.map fn diffs
