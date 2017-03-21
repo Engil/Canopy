@@ -20,4 +20,4 @@ RUN opam config exec -- make depend
 RUN opam config exec -- make
 RUN sudo mkdir /tmp/assets ; sudo chown opam:opam /tmp/assets ; ./populate.sh /tmp/assets
 EXPOSE 8080
-ENTRYPOINT ["opam", "config", "exec", "--", "./mir-canopy"]
+ENTRYPOINT ["opam", "config", "exec", "--", "./canopy"]
