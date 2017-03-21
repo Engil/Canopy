@@ -28,14 +28,14 @@ let packages = [
   package ~min:"4.0.0" "tyxml";
   package "ptime";
   package ~min:"0.5" "decompress";
-  package "irmin";
+  package ~min:"1.0.0" "irmin";
   package "irmin-mirage";
   package "mirage-http";
   package "mirage-flow";
   package ~sublibs:["mirage"] "tls";
   package "re";
   package ~min:"0.21.0" "cohttp";
-  package "syndic";
+  package ~min:"1.5" "syndic";
   package "magic-mime";
   package "uuidm";
   package "logs";
