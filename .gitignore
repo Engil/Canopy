@@ -13,5 +13,5 @@ canopy.x[el]
 canopy.x[el].in
 canopy_libvirt.xml
 main.native
-mir-canopy
-mir-canopy.xen
+canopy
+canopy.xen
