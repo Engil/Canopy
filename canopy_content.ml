@@ -9,16 +9,16 @@ type error_t =
   | Ok of content_t
 
 let meta_assoc str =
-  Re_str.split (Re_str.regexp "\n") str |>
+  Re.Str.split (Re.Str.regexp "\n") str |>
   List.map (fun meta ->
-      let reg = Re_str.regexp "\\(.*\\): \\(.*\\)" in
-      let _ = Re_str.string_match reg meta 0 in
-      let key = Re_str.matched_group 1 meta in
-      let value = Re_str.matched_group 2 meta in
+      let reg = Re.Str.regexp "\\(.*\\): \\(.*\\)" in
+      let _ = Re.Str.string_match reg meta 0 in
+      let key = Re.Str.matched_group 1 meta in
+      let value = Re.Str.matched_group 2 meta in
       key, value)
 
 let of_string ~base_uuid ~uri ~created ~updated ~content =
-  let splitted_content = Re_str.bounded_split (Re_str.regexp "---") content 2 in
+  let splitted_content = Re.Str.bounded_split (Re.Str.regexp "---") content 2 in
   match splitted_content with
   | [raw_meta;raw_content] ->
     begin

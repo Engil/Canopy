@@ -16,7 +16,7 @@ type t = {
 
 let of_string base_uuid meta uri created updated content =
   try
-    let split_tags = Re_str.split (Re_str.regexp ",") in
+    let split_tags = Re.Str.split (Re.Str.regexp ",") in
     let content = Omd.to_html (Omd.of_string content) in
     let author = List.assoc "author" meta in
     let title = List.assoc "title" meta in

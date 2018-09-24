@@ -35,7 +35,7 @@ module Make (S: Cohttp_lwt.S.Server) = struct
       respond_if_modified ~headers ~body ~updated
     and respond_update () = S.respond_string ~headers ~status:`OK ~body:"" ()
     in
-    match Re_str.split (Re_str.regexp "/") (Uri.pct_decode uri) with
+    match Re.Str.split (Re.Str.regexp "/") (Uri.pct_decode uri) with
     | [] ->
       let index_page = Canopy_config.index_page !cache in
       dispatcher headers store atom cache index_page etag
