@@ -1,5 +1,6 @@
 PKG lwt
 PKG irmin
+PKG mustache
 PKG mirage
 PKG omd
 PKG calendar
@@ -8,7 +9,6 @@ PKG irmin-mirage
 PKG irmin-git
 PKG mirage-http
 PKG tls.mirage
-PKG tyxml
 PKG mirage-console
 PKG syndic
 PKG ptime

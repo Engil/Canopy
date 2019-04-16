@@ -36,13 +36,12 @@ let of_string ~base_uuid ~uri ~created ~updated ~content =
     end
   | _ -> Error "No header found"
 
-let to_tyxml = function
+let to_json = function
   | Markdown m ->
-    let open Canopy_article in
-    m.title, to_tyxml m
+    m.title, Canopy_article.to_json m
 
-let to_tyxml_listing_entry = function
-  | Markdown m -> Canopy_article.to_tyxml_listing_entry m
+let to_json_listing = function
+  | Markdown m -> Canopy_article.to_json m
 
 let to_atom cache = function
   | Markdown m -> Canopy_article.to_atom cache m

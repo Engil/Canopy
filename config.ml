@@ -39,13 +39,12 @@ let packages = [
   package "magic-mime";
   package "uuidm";
   package "logs";
+  package "mustache";
 ]
 
 
 (* Network stack *)
 let stack =
-  if_impl Key.is_unix
-    (socket_stackv4 [Ipaddr.V4.any])
     (generic_stackv4 default_network)
 
 let () =

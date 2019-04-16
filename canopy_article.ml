@@ -1,5 +1,4 @@
 open Canopy_utils
-open Tyxml.Html
 
 type t = {
   title : string;
@@ -36,56 +35,42 @@ let of_string base_uuid meta uri created updated content =
   with
   | _ -> None
 
-let to_tyxml article =
-  let author = "Written by " ^ article.author in
-  let created = ptime_to_pretty_date article.created in
-  let updated = ptime_to_pretty_date article.updated in
-  let updated = String.concat " "
-      [ "Published:" ; created ; "(last updated:" ; updated ^ ")" ]
-  in
-  let tags = Canopy_templates.taglist article.tags in
-  let author_span_or_a = match article.author_uri with
-    | None -> span ~a:[a_class ["author"]] [pcdata author]
-    | Some a_uri -> a ~a:[a_class ["author"]; a_href a_uri] [pcdata author]
-  in
-  [div ~a:[a_class ["post"]] [
-      h2 [pcdata article.title];
-      author_span_or_a;
-      br ();
-      tags;
-      span ~a:[a_class ["date"]] [pcdata updated];
-      br ();
-      Tyxml.Html.article [Unsafe.data article.content]
-    ]]
-
-let to_tyxml_listing_entry article =
-  let author = "Written by " ^ article.author in
-  let abstract = match article.abstract with
-    | None -> []
-    | Some abstract -> [p ~a:[a_class ["list-group-item-text abstract"]] [Unsafe.data abstract]] in
-  let created = ptime_to_pretty_date article.created in
-  let content = [
-    h2 ~a:[a_class ["list-group-item-heading"]] [pcdata article.title];
-    span ~a:[a_class ["author"]] [pcdata author];
-    pcdata " ";
-    time [pcdata created];
-    br ();
-  ] in
-  a ~a:[a_href ("/" ^ article.uri); a_class ["list-group-item"]] (content ++ abstract)
-
-let to_tyxml_tags tags =
+let tags_to_json tags =
   let format_tag tag =
-    let taglink = Printf.sprintf "/tags/%s" in
-    a ~a:[taglink tag |> a_href; a_class ["list-group-item"]] [pcdata tag] in
-  let html = match tags with
-    | [] -> div []
-    | tags ->
-      let tags = List.map format_tag tags in
-      p ~a:[a_class ["tags"]] tags
+    `O [
+      "name", `String tag;
+      "uri", `String (Printf.sprintf "/tags/%s" tag);
+    ]
   in
-  [div ~a:[a_class ["post"]] [
-      h2 [pcdata "Tags"];
-      div ~a:[a_class ["list-group listing"]] [html]]]
+  `O ["tags", `A (List.map format_tag tags)]
+
+let to_json article =
+  let author =  `String article.author in
+  let created = `String (ptime_to_pretty_date article.created) in
+  let updated = `String (ptime_to_pretty_date article.updated) in
+  let author_uri =
+    match article.author_uri with
+    | Some uri -> `String uri
+    | None -> `Bool false
+  in
+  let title = `String article.title in
+  let content = `String article.content in
+  let abstract =
+    match article.abstract with
+    | Some abstract -> `String abstract
+    | None -> `Bool false
+  in
+  `O [
+    "author", author;
+    "uri", `String article.uri;
+    "created", created;
+    "updated", updated;
+    "author_uri", author_uri;
+    "title", title;
+    "content", content;
+    "abstract", abstract;
+    "tags", tags_to_json article.tags;
+  ]
 
 let to_atom cache ({ title; author; abstract; uri; created; updated; tags; content; uuid}) =
   let text x : Syndic.Atom.text_construct = Syndic.Atom.Text x in

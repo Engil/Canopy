@@ -1,5 +1,6 @@
 open Lwt.Infix
 
+
 type store_ops = {
   subkeys : string list -> string list list Lwt.t ;
   value : string list -> string option Lwt.t ;
@@ -30,12 +31,15 @@ module Make (S: Cohttp_lwt.S.Server) = struct
     in
     let respond_html ~headers ~content ~title ~updated =
       store.subkeys [] >>= fun keys ->
-      let body = Canopy_templates.main ~cache:(!cache) ~content ~title ~keys in
+      let site_name = Canopy_config.blog_name !cache in
+      let index_uri = Canopy_config.index_page !cache in
+      let body = Canopy_templates.main ~cache:(!cache) ~content ~title ~site_name ~index_uri ~keys in
       let headers = html_headers headers updated in
       respond_if_modified ~headers ~body ~updated
     and respond_update () = S.respond_string ~headers ~status:`OK ~body:"" ()
     in
     match Re.Str.split (Re.Str.regexp "/") (Uri.pct_decode uri) with
+    | "templates" :: [] -> respond_not_found ()
     | [] ->
       let index_page = Canopy_config.index_page !cache in
       dispatcher headers store atom cache index_page etag
@@ -48,11 +52,12 @@ module Make (S: Cohttp_lwt.S.Server) = struct
       store.update () >>= fun () ->
       respond_update ()
     | "tags"::[] -> (
-      let tags = Canopy_content.tags !cache in
-      let content = Canopy_article.to_tyxml_tags tags in
-      store.last_commit () >>= fun updated ->
-      let title = Canopy_config.blog_name !cache in
-      respond_html ~headers ~title ~content ~updated
+        let tags = Canopy_content.tags !cache in
+        let json = Canopy_article.tags_to_json tags in
+        let content = Canopy_templates.tags ~cache:!cache json in
+        store.last_commit () >>= fun updated ->
+        let title = Canopy_config.blog_name !cache in
+        respond_html ~headers ~title ~content ~updated
       )
     | "tags"::tagname::_ -> (
         let aux _ v l =
@@ -64,8 +69,10 @@ module Make (S: Cohttp_lwt.S.Server) = struct
         | _ ->
           let updated = List.hd (List.rev (List.sort Ptime.compare (List.map Canopy_content.updated sorted))) in
           let content = sorted
-                        |> List.map Canopy_content.to_tyxml_listing_entry
-                        |> Canopy_templates.listing
+                        |> List.map Canopy_content.to_json
+                        |> List.map snd
+                        |> fun arr -> `O ["articles", `A arr]
+                        |> Canopy_templates.articles_listing ~cache:!cache
           in
           let title = Canopy_config.blog_name !cache in
           respond_html ~headers ~title ~content ~updated
@@ -74,6 +81,7 @@ module Make (S: Cohttp_lwt.S.Server) = struct
       begin
         match KeyMap.find_opt !cache key with
         | None
+        | Some (`Template _ )
         | Some (`Config _ ) -> (
             store.subkeys key >>= function
             | [] -> respond_not_found ()
@@ -85,15 +93,18 @@ module Make (S: Cohttp_lwt.S.Server) = struct
                   let sorted = List.sort Canopy_content.compare articles in
                   let updated = List.hd (List.rev (List.sort Ptime.compare (List.map Canopy_content.updated articles))) in
                   let content = sorted
-                                |> List.map Canopy_content.to_tyxml_listing_entry
-                                |> Canopy_templates.listing
+                                |> List.map Canopy_content.to_json
+                                |> List.map snd
+                                |> fun arr -> `O ["articles", `A arr]
+                                |> Canopy_templates.articles_listing ~cache:!cache
                   in
                   let title = Canopy_config.blog_name !cache in
                   respond_html ~headers ~title ~content ~updated
                 ))
         | Some (`Article article) ->
-          let title, content = Canopy_content.to_tyxml article in
+          let title, content = Canopy_content.to_json article in
           let updated = Canopy_content.updated article in
+          let content = Canopy_templates.article ~cache:!cache content in
           respond_html ~headers ~title ~content ~updated
         | Some (`Raw (body, updated)) ->
           let headers = static_headers headers uri updated in

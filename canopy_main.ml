@@ -47,7 +47,7 @@ module Main (S: STACKV4) (RES: Resolver_lwt.S) (CON: Conduit_mirage.S) (CLOCK: P
       Canopy_syndic.atom uuid Store.last_commit_date cache
     in
     let store_ops = {
-      Canopy_dispatch.subkeys = Store.get_subkeys ;
+      Canopy_dispatch.subkeys = Store.filter_subkeys `Article;
       value = Store.get_key ;
       update =
         (fun () ->

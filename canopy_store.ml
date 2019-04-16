@@ -44,15 +44,16 @@ let walk t root =
 let key_type = function
   | x::_ when x = "static" -> `Static
   | x::_ when x = ".config" -> `Config
+  | x::_ when x = ".templates" -> `Template
   | _ -> `Article
 
-let get_subkeys key =
+let filter_subkeys filter key =
   match !my_store with
   | None -> Lwt.return []
   | Some t ->
     walk t key >|= fun keys ->
     List.fold_left
-      (fun acc (k, _) -> if key_type k = `Article then k :: acc else acc)
+      (fun acc (k, _) -> if key_type k = filter then k :: acc else acc)
       [] keys
 
 let get_key key =
@@ -138,8 +139,15 @@ let fill_cache base_uuid =
     match key_type key with
     | `Static -> KeyMap.add key (`Raw (content, updated)) cache
     | `Config -> KeyMap.add key (`Config (String.trim content)) cache
+    | `Template -> begin
+      match Mustache.of_string content with
+      | exception exn ->
+        Log.warn (fun f -> f "il se passe des choses") ;
+        cache
+      | template -> KeyMap.add key (`Template template) cache
+    end
     | `Article ->
-      let uri = String.concat "/" key in
+      let uri = String.concat "/" (List.map Uri.pct_encode key) in
       match C.of_string ~base_uuid ~uri ~content ~created ~updated with
       | C.Ok article -> KeyMap.add key (`Article article) cache
       | C.Unknown ->

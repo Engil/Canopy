@@ -19,6 +19,9 @@ let default_opt default = function
   | None -> default
   | Some v -> v
 
+let ok v = Ok v
+let error_msg m = Error (`Msg m)
+
 let resize len l =
   List.fold_left
     (fun (len, acc) x ->

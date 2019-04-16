@@ -1,80 +1,47 @@
 open Canopy_config
 open Canopy_utils
-open Tyxml.Html
 
-let empty =
-  div []
+let get_template cache name =
+  let key = [ ".templates"; name ] in
+  match KeyMap.find_opt cache key with
+  | Some `Template template -> template
+  | _ ->
+    Logs.err (fun f -> f "template %s not found" name) ;
+    assert false
 
-let taglist tags =
-  let format_tag tag =
-    let taglink = Printf.sprintf "/tags/%s" in
-    a ~a:[taglink tag |> a_href; a_class ["tag"]] [pcdata tag] in
-  match tags with
-  | [] -> empty
-  | tags ->
-     let tags = List.map format_tag tags in
-     div ~a:[a_class ["tags"]] ([pcdata "Classified under: "] ++ tags)
+let render_template_try name t j =
+  try
+    Mustache.render t j
+  with
+  | exn ->
+    Logs.err (fun f -> f "exn while rendering template %s: %a" name Fmt.exn exn);
+    raise exn
 
-let links keys =
-  let paths = List.map (function
-			 | x::_ -> x
-			 | _ -> assert false
-		       ) keys |> List.sort_uniq (Pervasives.compare) in
-  let format_link link =
-    li [ a ~a:[a_href ("/" ^ link)] [span [pcdata link]]] in
-  List.map format_link paths
+let tags ~cache tags =
+  let template = get_template cache "tags.mustache" in
+  render_template_try "tags" template tags
 
-let main ~cache ~content ~title ~keys =
-  let links = links keys in
-  let page =
-    html
-      (head
-         (Tyxml.Html.title (pcdata title))
-         ([
-           meta ~a:[a_charset "UTF-8"] ();
-           link ~rel:[`Stylesheet] ~href:"/static/css/bootstrap.min.css" ();
-           link ~rel:[`Stylesheet] ~href:"/static/css/style.css" ();
-           link ~rel:[`Stylesheet] ~href:"/static/css/highlight.css" ();
-           script ~a:[a_src "/static/js/canopy.js"] (pcdata "");
-           link ~rel:[`Alternate] ~href:"/atom" ~a:[a_title title; a_mime_type "application/atom+xml"] ();
-         ])
-      )
-      (body
-         [
-           nav ~a:[a_class ["navbar navbar-default navbar-fixed-top"]] [
-             div ~a:[a_class ["container"]] [
-               div ~a:[a_class ["navbar-header"]] [
-                 button ~a:[a_class ["navbar-toggle collapsed"];
-                            a_user_data "toggle" "collapse";
-                            a_user_data "target" ".navbar-collapse"
-                           ] [
-                   span ~a:[a_class ["icon-bar"]][];
-                   span ~a:[a_class ["icon-bar"]][];
-                   span ~a:[a_class ["icon-bar"]][]
-                 ];
-                 a ~a:[a_class ["navbar-brand"]; a_href ("/" ^ index_page cache)][pcdata (blog_name cache)]
-               ];
-               div ~a:[a_class ["collapse navbar-collapse collapse"]] [
-                 ul ~a:[a_class ["nav navbar-nav navbar-right"]] links
-               ]
-             ]
-           ];
-           main [
-             div ~a:[a_class ["flex-container"]] content
-           ]
-         ]
-      )
+let article ~cache article =
+  let template = get_template cache "article.mustache" in
+  render_template_try "article" template article
+
+let articles_listing ~cache articles =
+  let template = get_template cache "listing_entry.mustache" in
+  render_template_try "articles_listing" template articles 
+
+let main ~cache ~content ~title ~site_name ~index_uri ~keys =
+  let template = get_template cache "main.mustache" in
+  let pages = List.map (function
+    | x::_ -> `O ["name", `String x; "uri", `String ("/" ^ x)]
+    | _ -> assert false) keys
   in
-  let buf = Buffer.create 500 in
-  let fmt = Format.formatter_of_buffer buf in
-  pp () fmt page ;
-  Buffer.contents buf
-
-let listing entries =
-  [div ~a:[a_class ["flex-container"]] [
-	 div ~a:[a_class ["list-group listing"]] entries
-       ]
-  ]
-
-let error msg =
-  [div ~a:[a_class ["alert alert-danger"]] [pcdata msg]]
+  let json =
+    `O [
+      "title", `String title;
+      "content", `String content;
+      "site_name", `String site_name;
+      "site_index", `String index_uri;
+      "pages", `A pages
+    ]
+  in
+  render_template_try "main" template json
