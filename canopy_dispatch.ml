@@ -7,7 +7,7 @@ type store_ops = {
   last_commit : unit -> Ptime.t Lwt.t ;
 }
 
-module Make (S: Cohttp_lwt.S.Server) = struct
+module Make (S: Cohttp_mirage.Server.S) = struct
 
   let src = Logs.Src.create "canopy-dispatch" ~doc:"Canopy dispatch logger"
   module Log = (val Logs.src_log src : Logs.LOG)
