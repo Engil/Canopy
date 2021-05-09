@@ -1,14 +1,14 @@
-# Canopy - A git-blogging unikernel 🌿  [![Build Status](https://travis-ci.org/Engil/Canopy.svg?branch=master)](https://travis-ci.org/Engil/Canopy)
+# Canopy - A git-blogging unikernel 🌿 [![Build Status](https://travis-ci.org/Engil/Canopy.svg?branch=master)](https://travis-ci.org/Engil/Canopy)
 
 Canopy is an attempt at writting a blog-engine based on Git using [MirageOS][mirage].
 
 The goal is to provide a simple blog platform that only requires you to provide a Git remote URL and respecting some architecture rules within the said repository.
 
-Canopy is written in OCaml using MirageOS and [Irmin][irmin].  It is running on both Unix and Xen.
+Canopy is written in OCaml using MirageOS and [Irmin][irmin]. It is running on both Unix and Xen.
 
- [decompress]: <https://github.com/oklm-wsh/Decompress>
- [mirage]: <http://mirage.io/>
- [irmin]: <https://github.com/mirage/irmin>
+[decompress]: https://github.com/oklm-wsh/Decompress
+[mirage]: http://mirage.io/
+[irmin]: https://github.com/mirage/irmin
 
 ### HTTPS/TLS support
 
@@ -23,9 +23,9 @@ CAs, no need to include the root CA) into `tls/server.pem` before running
 `mirage configure` (which will embed them as OCaml code into the binary).
 
 You can configure Canopy with `--tls=<port>` to run it as HTTPS
-service.  Canopy will then respond to HTTP requests with a [moved
+service. Canopy will then respond to HTTP requests with a [moved
 permanently](https://tools.ietf.org/html/rfc2616#section-10.3.2) redirection to
-the HTTPS URL.  Also, the HTTPS service includes a [strict transport
+the HTTPS URL. Also, the HTTPS service includes a [strict transport
 security](https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security) HTTP
 header (containing `max-age=31536000`).
 
@@ -118,7 +118,7 @@ echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 sysctl -p /etc/sysctl.conf
 iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE
 # create a new bridge
-brctl addbr br0
+ip link add br0 type bridge
 ip addr dev br0 add 10.0.0.1/24
 ip link set br0 up
 ```
