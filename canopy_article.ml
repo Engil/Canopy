@@ -89,8 +89,9 @@ let to_tyxml_tags tags =
 
 let to_atom cache ({ title; author; abstract; uri; created; updated; tags; content; uuid}) =
   let text x : Syndic.Atom.text_construct = Syndic.Atom.Text x in
+  let html x : Syndic.Atom.text_construct = Syndic.Atom.Html (None, x) in
   let summary = match abstract with
-    | Some x -> Some (text x)
+    | Some x -> Some (html x)
     | None -> None
   in
   let root = Canopy_config.root cache
